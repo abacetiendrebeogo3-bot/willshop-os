@@ -78,7 +78,7 @@ export default function OrdersStockPage() {
       // Load Products & Stocks
       const { data: prods } = await supabase
         .from("products")
-        .select("*, product_stocks(*), product_images(*)")
+        .select("*, product_stock(*), product_images(*)")
         .eq("organization_id", currentOrgId)
         .is("deleted_at", null);
 
@@ -87,7 +87,7 @@ export default function OrdersStockPage() {
         let pSum = 0;
         let rSum = 0;
         prods.forEach((p) => {
-          const st = p.product_stocks?.[0];
+          const st = p.product_stock?.[0];
           if (st) {
             pSum += Number(st.physical_stock || 0);
             rSum += Number(st.reserved_stock || 0);
@@ -138,7 +138,7 @@ export default function OrdersStockPage() {
     }
 
     const qty = Number(orderQuantity) || 1;
-    const stock = prod.product_stocks?.[0];
+    const stock = prod.product_stock?.[0];
     const available = (stock?.physical_stock || 0) - (stock?.reserved_stock || 0);
 
     if (qty > available) {
@@ -184,7 +184,7 @@ export default function OrdersStockPage() {
           customer_id: customerId || null,
           order_number: orderNumber,
           status: "CONFIRMED",
-          total_amount: totalAmount,
+          total: totalAmount,
           currency: prod.currency || "XOF",
         })
         .select()
@@ -204,7 +204,7 @@ export default function OrdersStockPage() {
       // 3. Update Reserved Stock
       if (stock) {
         await supabase
-          .from("product_stocks")
+          .from("product_stock")
           .update({
             reserved_stock: (stock.reserved_stock || 0) + qty,
           })
@@ -243,12 +243,12 @@ export default function OrdersStockPage() {
     try {
       const supabase = createClient();
       const prod = products.find((p) => p.id === adjustProductId);
-      const stock = prod?.product_stocks?.[0];
+      const stock = prod?.product_stock?.[0];
       const addQty = Number(adjustQuantity) || 0;
 
       if (stock) {
         await supabase
-          .from("product_stocks")
+          .from("product_stock")
           .update({
             physical_stock: (stock.physical_stock || 0) + addQty,
           })
@@ -444,7 +444,7 @@ export default function OrdersStockPage() {
                 >
                   <option value="">-- Sélectionner un produit --</option>
                   {products.map((p) => {
-                    const st = p.product_stocks?.[0];
+                    const st = p.product_stock?.[0];
                     const avail = (st?.physical_stock || 0) - (st?.reserved_stock || 0);
                     return (
                       <option key={p.id} value={p.id} disabled={avail <= 0}>
@@ -551,7 +551,7 @@ export default function OrdersStockPage() {
                   <option value="">-- Sélectionner un produit --</option>
                   {products.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (Stock actuel: {p.product_stocks?.[0]?.physical_stock || 0})
+                      {p.name} (Stock actuel: {p.product_stock?.[0]?.physical_stock || 0})
                     </option>
                   ))}
                 </select>

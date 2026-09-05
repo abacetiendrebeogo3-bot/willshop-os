@@ -114,7 +114,7 @@ export default function ProductsPage() {
 
       const { data: prods, error } = await supabase
         .from("products")
-        .select("*, product_stocks(*), product_images(*)")
+        .select("*, product_stock(*), product_images(*)")
         .eq("organization_id", currentOrgId)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
@@ -241,8 +241,8 @@ export default function ProductsPage() {
         throw new Error(pErr?.message || "Erreur lors de la création du produit");
       }
 
-      // 2. Initialize Stock in `product_stocks` (SSOT)
-      const { error: stErr } = await supabase.from("product_stocks").insert({
+      // 2. Initialize Stock in `product_stock` (SSOT)
+      const { error: stErr } = await supabase.from("product_stock").insert({
         organization_id: orgId,
         product_id: newProd.id,
         physical_stock: initStock,
@@ -251,7 +251,7 @@ export default function ProductsPage() {
       });
 
       if (stErr) {
-        console.warn("[Stock Init Warning]", stErr.message);
+        throw new Error(`Erreur lors de l'initialisation du stock: ${stErr.message}`);
       }
 
       // 3. Log Inbound Movement in `stock_movements`
@@ -281,15 +281,14 @@ export default function ProductsPage() {
             });
 
           if (uploadErr) {
-            console.error("[Storage Upload Error]", uploadErr.message);
-            continue;
+            throw new Error(`Erreur lors de l'upload de l'image ${imgItem.file.name}: ${uploadErr.message}`);
           }
 
           const { data: urlData } = supabase.storage
             .from("product-images")
             .getPublicUrl(storagePath);
 
-          await supabase.from("product_images").insert({
+          const { error: dbImgErr } = await supabase.from("product_images").insert({
             organization_id: orgId,
             product_id: newProd.id,
             storage_path: storagePath,
@@ -297,6 +296,10 @@ export default function ProductsPage() {
             is_primary: imgItem.isPrimary,
             sort_order: idx,
           });
+
+          if (dbImgErr) {
+            throw new Error(`Erreur lors de l'enregistrement de l'image ${imgItem.file.name}: ${dbImgErr.message}`);
+          }
         }
       }
 
@@ -388,12 +391,12 @@ export default function ProductsPage() {
     setIsSubmittingAdjust(true);
     try {
       const supabase = createClient();
-      const stock = adjustProduct.product_stocks?.[0];
+      const stock = adjustProduct.product_stock?.[0];
       const addQty = Number(adjustQty) || 0;
 
       if (stock) {
         await supabase
-          .from("product_stocks")
+          .from("product_stock")
           .update({
             physical_stock: (stock.physical_stock || 0) + addQty,
           })
@@ -433,7 +436,7 @@ export default function ProductsPage() {
   let totalPhysical = 0;
   let totalReserved = 0;
   products.forEach((p) => {
-    const st = p.product_stocks?.[0];
+    const st = p.product_stock?.[0];
     if (st) {
       totalPhysical += Number(st.physical_stock || 0);
       totalReserved += Number(st.reserved_stock || 0);
@@ -581,7 +584,7 @@ export default function ProductsPage() {
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-200">
                 {filteredProducts.map((p) => {
-                  const stock = p.product_stocks?.[0];
+                  const stock = p.product_stock?.[0];
                   const phys = Number(stock?.physical_stock || 0);
                   const res = Number(stock?.reserved_stock || 0);
                   const avail = phys - res;
@@ -998,11 +1001,11 @@ export default function ProductsPage() {
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-1">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Stock Physique Actuel :</span>
-                  <span className="font-bold text-slate-100">{adjustProduct.product_stocks?.[0]?.physical_stock || 0}</span>
+                  <span className="font-bold text-slate-100">{adjustProduct.product_stock?.[0]?.physical_stock || 0}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Stock Réservé :</span>
-                  <span className="font-bold text-amber-400">{adjustProduct.product_stocks?.[0]?.reserved_stock || 0}</span>
+                  <span className="font-bold text-amber-400">{adjustProduct.product_stock?.[0]?.reserved_stock || 0}</span>
                 </div>
               </div>
 

@@ -89,7 +89,7 @@ export default function ProductDetailPage() {
 
       // 2. Load Stock
       const { data: st } = await supabase
-        .from("product_stocks")
+        .from("product_stock")
         .select("*")
         .eq("product_id", productId)
         .eq("organization_id", orgId)
