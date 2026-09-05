@@ -253,9 +253,12 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
   }
 }
 
+import { FinancialObligationEntity, ObligationType } from '../../domain/entities/FinanceEntities';
+
 export class InMemoryFinanceRepository implements IFinanceRepository {
   private accounts: Map<string, FinancialAccount> = new Map();
   private transactions: Transaction[] = [];
+  private obligations: FinancialObligationEntity[] = [];
 
   async createAccount(dto: Omit<FinancialAccount, 'id' | 'createdAt' | 'updatedAt'>): Promise<FinancialAccount> {
     const account: FinancialAccount = {
@@ -264,6 +267,9 @@ export class InMemoryFinanceRepository implements IFinanceRepository {
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+    if (account.openingBalance && !('currentBalance' in account)) {
+      (account as any).currentBalance = account.openingBalance;
+    }
     this.accounts.set(account.id, account);
     return account;
   }
@@ -272,6 +278,19 @@ export class InMemoryFinanceRepository implements IFinanceRepository {
     const acc = this.accounts.get(id);
     if (acc && acc.organizationId === orgId) return acc;
     return null;
+  }
+
+  async updateAccountBalance(id: string, orgId: string, newBalance: number): Promise<FinancialAccount> {
+    const acc = await this.getAccount(id, orgId);
+    if (!acc) throw new Error('Financial account not found');
+    (acc as any).currentBalance = newBalance;
+    acc.updatedAt = new Date();
+    this.accounts.set(id, acc);
+    return acc;
+  }
+
+  async listAccountsByOrg(orgId: string): Promise<FinancialAccount[]> {
+    return Array.from(this.accounts.values()).filter((a) => a.organizationId === orgId);
   }
 
   async recordTransaction(dto: Omit<Transaction, 'id' | 'createdAt'>): Promise<Transaction> {
@@ -287,6 +306,27 @@ export class InMemoryFinanceRepository implements IFinanceRepository {
   async listTransactions(accountId: string, orgId: string): Promise<Transaction[]> {
     return this.transactions.filter(
       (t) => t.financialAccountId === accountId && t.organizationId === orgId
+    );
+  }
+
+  async listAllTransactionsByOrg(orgId: string): Promise<Transaction[]> {
+    return this.transactions.filter((t) => t.organizationId === orgId);
+  }
+
+  async createObligation(dto: Omit<FinancialObligationEntity, 'id' | 'createdAt' | 'updatedAt'>): Promise<FinancialObligationEntity> {
+    const obligation: FinancialObligationEntity = {
+      ...dto,
+      id: `obl-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.obligations.push(obligation);
+    return obligation;
+  }
+
+  async listObligationsByOrg(orgId: string, type?: ObligationType): Promise<FinancialObligationEntity[]> {
+    return this.obligations.filter(
+      (o) => o.organizationId === orgId && (!type || o.type === type)
     );
   }
 }

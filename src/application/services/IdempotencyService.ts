@@ -64,4 +64,25 @@ export class IdempotencyService {
 
     return { data: result, isCachedResponse: false };
   }
+
+  async check<T>(key: string, orgId: string, requestPayload: Record<string, unknown>): Promise<T | null> {
+    const requestHash = JSON.stringify(requestPayload);
+    const existing = await this.idempotencyRepo.findKey(key, orgId);
+    if (existing) {
+      if (existing.requestHash !== requestHash) {
+        throw new IdempotencyMismatchError(
+          `Idempotency key '${key}' was previously used with a different request payload.`
+        );
+      }
+      if (existing.responsePayload) {
+        return existing.responsePayload as T;
+      }
+    }
+    await this.idempotencyRepo.createKey(key, orgId, requestHash);
+    return null;
+  }
+
+  async save<T>(key: string, orgId: string, requestPayload: Record<string, unknown>, responsePayload: T): Promise<void> {
+    await this.idempotencyRepo.completeKey(key, orgId, responsePayload as Record<string, unknown>);
+  }
 }

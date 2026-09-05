@@ -89,3 +89,41 @@ export class OrganizationContextService {
     }
   }
 }
+
+// Module-level mock context store for server application services & test suites
+let mockContextState: { userId: string; organizationId: string; role: UserRole } = {
+  userId: 'user-ceo-wilty',
+  organizationId: 'org-willshop-001',
+  role: 'OWNER',
+};
+
+export function setMockContext(ctx: { userId: string; organizationId: string; role: UserRole }): void {
+  mockContextState = ctx;
+}
+
+export function setMockOrgContext(ctx: { userId: string; organizationId: string; role: UserRole }): void {
+  mockContextState = ctx;
+}
+
+export async function getOrganizationContext(): Promise<{
+  userId: string;
+  organizationId: string;
+  role: UserRole;
+  permissions: ActionPermission[];
+}> {
+  const role = mockContextState.role || 'OWNER';
+  const permissions = ROLE_PERMISSIONS[role] || [];
+  return {
+    userId: mockContextState.userId,
+    organizationId: mockContextState.organizationId,
+    role,
+    permissions,
+  };
+}
+
+export function verifyPermission(role: UserRole, action: ActionPermission): void {
+  const permissions = ROLE_PERMISSIONS[role] || [];
+  if (!permissions.includes(action)) {
+    throw new ForbiddenError(`Role '${role}' does not have permission '${action}'`);
+  }
+}

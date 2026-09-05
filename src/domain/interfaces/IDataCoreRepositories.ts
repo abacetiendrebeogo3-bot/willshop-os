@@ -65,11 +65,18 @@ export interface IDeliveryRepository {
   listByOrg(orgId: string): Promise<Delivery[]>;
 }
 
+import { FinancialObligationEntity, ObligationType } from '../entities/FinanceEntities';
+
 export interface IFinanceRepository {
   createAccount(account: Omit<FinancialAccount, 'id' | 'createdAt' | 'updatedAt'>): Promise<FinancialAccount>;
   getAccount(id: string, orgId: string): Promise<FinancialAccount | null>;
+  updateAccountBalance(id: string, orgId: string, newBalance: number): Promise<FinancialAccount>;
+  listAccountsByOrg(orgId: string): Promise<FinancialAccount[]>;
   recordTransaction(transaction: Omit<Transaction, 'id' | 'createdAt'>): Promise<Transaction>;
   listTransactions(accountId: string, orgId: string): Promise<Transaction[]>;
+  listAllTransactionsByOrg(orgId: string): Promise<Transaction[]>;
+  createObligation(obligation: Omit<FinancialObligationEntity, 'id' | 'createdAt' | 'updatedAt'>): Promise<FinancialObligationEntity>;
+  listObligationsByOrg(orgId: string, type?: ObligationType): Promise<FinancialObligationEntity[]>;
 }
 
 export interface IAIMemoryRepository {
