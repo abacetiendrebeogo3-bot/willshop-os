@@ -45,7 +45,11 @@ function LoginFormContent() {
       });
 
       if (error) {
-        setErrorMessage(error.message || "Email ou mot de passe incorrect.");
+        let msg = error.message || "Email ou mot de passe incorrect.";
+        if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+          msg = "Impossible de contacter le serveur d'authentification Supabase. Vérifiez votre connexion Internet ou les variables d'environnement Supabase.";
+        }
+        setErrorMessage(msg);
         setIsLoading(false);
         return;
       }
@@ -65,7 +69,11 @@ function LoginFormContent() {
         }
       }
     } catch (err: any) {
-      setErrorMessage(err.message || "Une erreur inattendue est survenue.");
+      let msg = err?.message || "Une erreur inattendue est survenue.";
+      if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+        msg = "Impossible de contacter le serveur d'authentification Supabase (Failed to fetch). Vérifiez la configuration Supabase.";
+      }
+      setErrorMessage(msg);
       setIsLoading(false);
     }
   };

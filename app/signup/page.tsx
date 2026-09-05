@@ -66,7 +66,11 @@ export default function SignupPage() {
       });
 
       if (error) {
-        setErrorMessage(error.message || "Erreur lors de la création du compte.");
+        let msg = error.message || "Erreur lors de la création du compte.";
+        if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+          msg = "Impossible de contacter le serveur d'authentification Supabase. Si vous êtes en local, vérifiez que 'npm run dev' est démarré avec le fichier .env.local configuré. Si vous utilisez Vercel, vérifiez que NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY sont ajoutées dans les variables d'environnement Vercel.";
+        }
+        setErrorMessage(msg);
         setIsLoading(false);
         return;
       }
@@ -83,7 +87,11 @@ export default function SignupPage() {
         }, 2000);
       }
     } catch (err: any) {
-      setErrorMessage(err.message || "Une erreur inattendue est survenue.");
+      let msg = err?.message || "Une erreur inattendue est survenue.";
+      if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
+        msg = "Impossible de contacter le serveur d'authentification Supabase (Failed to fetch). Si vous êtes en local, vérifiez que le serveur dev tourne avec le fichier .env.local configuré. Sur Vercel, ajoutez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY dans Environment Variables puis redéployez.";
+      }
+      setErrorMessage(msg);
     } finally {
       setIsLoading(false);
     }
