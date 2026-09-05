@@ -121,9 +121,17 @@ export default function OnboardingPage() {
 
     try {
       const supabase = createClient();
-      const {
+      let {
         data: { session },
       } = await supabase.auth.getSession();
+
+      if (!session) {
+        const { data: refreshedData } = await supabase.auth.refreshSession();
+        if (refreshedData?.session) {
+          session = refreshedData.session;
+        }
+      }
+
       const token = session?.access_token;
 
       const res = await fetch("/api/organization/create", {
@@ -151,9 +159,9 @@ export default function OnboardingPage() {
       }
 
       if (!res.ok || data.error) {
-        let msg = data.error || "Erreur lors de la création de l'entreprise";
+        let msg = data.error || `Erreur serveur HTTP ${res.status} lors de la création de l'entreprise`;
         if (res.status === 401) {
-          msg = "Votre session d'authentification a expiré ou n'a pas été transmise. Redirection vers la page de connexion...";
+          msg = data.error || "Votre session d'authentification a expiré ou n'a pas été transmise. Redirection vers la page de connexion...";
           setTimeout(() => router.push("/login"), 2500);
         }
         setErrorMessage(msg);

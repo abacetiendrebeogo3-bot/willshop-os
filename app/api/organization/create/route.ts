@@ -4,15 +4,18 @@ import { createServerSupabaseClient } from '@/src/infrastructure/supabase/server
 
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://stbzctncpvgqdpybcrmg.supabase.co';
+    const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-    if (!supabaseUrl || !serviceKey) {
-      console.error('[Org API Error] NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variable is missing');
+    const supabaseUrl = rawUrl.trim().replace(/^["']|["']$/g, '');
+    const serviceKey = rawServiceKey.trim().replace(/^["']|["']$/g, '');
+
+    if (!serviceKey) {
+      console.error('[Org API Error] SUPABASE_SERVICE_ROLE_KEY environment variable is missing');
       return NextResponse.json(
         {
           error:
-            'Configuration serveur incomplète : SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_URL non configurée dans les variables d\'environnement Vercel.',
+            'Configuration serveur incomplète : SUPABASE_SERVICE_ROLE_KEY est manquante dans les variables d\'environnement Vercel (Project Settings > Environment Variables).',
         },
         { status: 500 }
       );
