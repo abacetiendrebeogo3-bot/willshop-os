@@ -6,31 +6,6 @@ export async function middleware(request: NextRequest) {
     request,
   });
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }>) {
-        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        supabaseResponse = NextResponse.next({
-          request,
-        });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options as any)
-        );
-      },
-    },
-  });
-
-  // Refresh auth session
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
   const pathname = request.nextUrl.pathname;
 
   // Public paths accessible without authentication
@@ -41,42 +16,85 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/webhooks') ||
     pathname.startsWith('/api/health');
 
-  // 1. If not logged in and accessing protected page -> redirect to /login
-  if (!user && !isPublicPath) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/login';
-    return NextResponse.redirect(url);
-  }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // 2. If logged in and accessing login/signup -> check org & redirect
-  if (user && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
-    // Check if user has an organization
-    const { data: roles } = await supabase
-      .from('user_organization_roles')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .is('deleted_at', null);
-
-    const url = request.nextUrl.clone();
-    if (!roles || roles.length === 0) {
-      url.pathname = '/onboarding';
-    } else {
-      url.pathname = '/ceo';
-    }
-    return NextResponse.redirect(url);
-  }
-
-  // 3. If logged in and accessing protected dashboard/ceo route -> verify org membership
-  if (user && !isPublicPath && !pathname.startsWith('/onboarding')) {
-    const { data: roles } = await supabase
-      .from('user_organization_roles')
-      .select('organization_id')
-      .eq('user_id', user.id)
-      .is('deleted_at', null);
-
-    if (!roles || roles.length === 0) {
+  // If Supabase environment variables are missing, do not crash middleware
+  if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('placeholder')) {
+    if (!isPublicPath) {
       const url = request.nextUrl.clone();
-      url.pathname = '/onboarding';
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+    return supabaseResponse;
+  }
+
+  try {
+    const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet: Array<{ name: string; value: string; options: Record<string, unknown> }>) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          supabaseResponse = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options as any)
+          );
+        },
+      },
+    });
+
+    // Refresh auth session
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // 1. If not logged in and accessing protected page -> redirect to /login
+    if (!user && !isPublicPath) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+
+    // 2. If logged in and accessing login/signup -> check org & redirect
+    if (user && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
+      const { data: roles } = await supabase
+        .from('user_organization_roles')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .is('deleted_at', null);
+
+      const url = request.nextUrl.clone();
+      if (!roles || roles.length === 0) {
+        url.pathname = '/onboarding';
+      } else {
+        url.pathname = '/ceo';
+      }
+      return NextResponse.redirect(url);
+    }
+
+    // 3. If logged in and accessing protected dashboard/ceo route -> verify org membership
+    if (user && !isPublicPath && !pathname.startsWith('/onboarding')) {
+      const { data: roles } = await supabase
+        .from('user_organization_roles')
+        .select('organization_id')
+        .eq('user_id', user.id)
+        .is('deleted_at', null);
+
+      if (!roles || roles.length === 0) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/onboarding';
+        return NextResponse.redirect(url);
+      }
+    }
+  } catch (err: any) {
+    console.error('[Middleware Error]', err?.message);
+    if (!isPublicPath) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
       return NextResponse.redirect(url);
     }
   }
@@ -87,11 +105,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - images/media assets
+     * Match all request paths except for static files & assets
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
