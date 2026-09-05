@@ -12,6 +12,11 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // API routes manage their own authentication and response statuses
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
   // Public paths accessible without authentication
   const isPublicPath =
     pathname === '/' ||
