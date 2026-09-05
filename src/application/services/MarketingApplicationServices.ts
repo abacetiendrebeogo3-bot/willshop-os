@@ -253,12 +253,12 @@ export class MarketingEngineService {
     const totalRevenue = campaigns.reduce((acc, c) => acc + c.attributedRevenue, 0);
     const totalOrders = campaigns.reduce((acc, c) => acc + c.attributedOrdersCount, 0);
 
-    // Aggregate funnel stats
-    const impressions = 50000;
-    const clicks = 1800;
-    const conversations = 180;
-    const leads = 45;
-    const deliveredOrders = Math.round(totalOrders * 0.9);
+    // Aggregate funnel stats (0 default when no public ad campaign or WhatsApp funnel data is active)
+    const impressions = 0;
+    const clicks = 0;
+    const conversations = 0;
+    const leads = 0;
+    const deliveredOrders = totalOrders;
 
     return MarketingFunnelService.analyzeFunnel(
       impressions,

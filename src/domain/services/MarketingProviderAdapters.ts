@@ -40,12 +40,12 @@ export class MetaAdsProviderAdapter implements IMarketingProviderAdapter {
 
   async fetchCampaignMetrics(orgId: string, externalCampaignId: string): Promise<MarketingProviderMetrics> {
     return {
-      impressions: 45000,
-      clicks: 1800,
-      spend: 75000,
-      cpm: 1666.67,
-      cpc: 41.67,
-      ctr: 4.0,
+      impressions: 0,
+      clicks: 0,
+      spend: 0,
+      cpm: 0,
+      cpc: 0,
+      ctr: 0,
     };
   }
 }
