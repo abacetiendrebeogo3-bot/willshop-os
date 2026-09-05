@@ -136,6 +136,103 @@ export class AIToolRegistry {
       permissionLevel: 'GREEN',
       requiredRole: 'VIEWER',
     });
+
+    // --- BUILD 12: STRATEGY & GOALS TOOLS ---
+    AIToolRegistry.register({
+      name: 'get_strategy_snapshot',
+      description: 'Obtenir la synthèse de la santé stratégique globale, vision et priorités',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_strategic_objectives',
+      description: 'Lister les orientations et objectifs stratégiques principaux',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_goal_progress',
+      description: 'Obtenir la progression exacte d\'un objectif relié aux KPI réels',
+      parametersSchema: { type: 'object', properties: { goalId: { type: 'string' } } },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_goal_forecast',
+      description: 'Obtenir la projection de trajectoire et le risque d\'échec d\'un objectif',
+      parametersSchema: { type: 'object', properties: { goalId: { type: 'string' } } },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_key_results',
+      description: 'Lister les résultats clés (Key Results) sous un objectif',
+      parametersSchema: { type: 'object', properties: { goalId: { type: 'string' } } },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_initiatives',
+      description: 'Lister les initiatives stratégiques actives, planifiées ou bloquées',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_initiative_score',
+      description: 'Obtenir le score de priorisation d\'une initiative (Impact vs Effort vs Risque)',
+      parametersSchema: { type: 'object', properties: { initiativeId: { type: 'string' } } },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_strategy_risks',
+      description: 'Lister les risques stratégiques évalués (Probabilité x Impact)',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_strategy_dependencies',
+      description: 'Analyser les dépendances d\'exécutions stratégiques',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_90_day_plan',
+      description: 'Obtenir la vue synthétique du plan stratégique à 90 jours (3-5 priorités)',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_strategy_roadmap',
+      description: 'Obtenir la feuille de route stratégique et le chronogramme d\'exécution',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_strategic_decisions',
+      description: 'Consulter l\'historique des décisions stratégiques et leurs réévaluations prévues',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'MANAGER',
+    });
   }
 
   public static register(tool: AIToolDefinition): void {
