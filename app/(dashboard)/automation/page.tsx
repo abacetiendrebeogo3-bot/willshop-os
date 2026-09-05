@@ -143,7 +143,7 @@ export default function AutomationDashboardPage() {
             <span className="text-xs font-medium uppercase tracking-wider">Exécutions Aujourd'hui</span>
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           </div>
-          <p className="text-2xl font-bold text-slate-100">109</p>
+          <p className="text-2xl font-bold text-slate-100">{executions.length}</p>
           <p className="text-[11px] text-emerald-400 font-mono mt-1">0 Doublons (Idempotent)</p>
         </div>
 

@@ -60,43 +60,18 @@ export async function middleware(request: NextRequest) {
 
     const isApiRoute = pathname.startsWith('/api/');
 
-    // 1. If not logged in and accessing protected page -> redirect to /login (bypass for API routes)
+    // 1. If not logged in and accessing protected page -> redirect to /login
     if (!user && !isPublicPath && !isApiRoute) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       return NextResponse.redirect(url);
     }
 
-    // 2. If logged in and accessing login/signup -> check org & redirect
+    // 2. If logged in and accessing login/signup -> redirect to /ceo
     if (user && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
-      const { data: roles } = await supabase
-        .from('user_organization_roles')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .is('deleted_at', null);
-
       const url = request.nextUrl.clone();
-      if (!roles || roles.length === 0) {
-        url.pathname = '/onboarding';
-      } else {
-        url.pathname = '/ceo';
-      }
+      url.pathname = '/ceo';
       return NextResponse.redirect(url);
-    }
-
-    // 3. If logged in and accessing protected dashboard/ceo route -> verify org membership
-    if (user && !isPublicPath && !pathname.startsWith('/onboarding')) {
-      const { data: roles } = await supabase
-        .from('user_organization_roles')
-        .select('organization_id')
-        .eq('user_id', user.id)
-        .is('deleted_at', null);
-
-      if (!roles || roles.length === 0) {
-        const url = request.nextUrl.clone();
-        url.pathname = '/onboarding';
-        return NextResponse.redirect(url);
-      }
     }
   } catch (err: any) {
     console.error('[Middleware Error]', err?.message);

@@ -1,12 +1,44 @@
 "use client";
 
-import React from "react";
-import { Bell, Search, ShieldAlert, Cpu, Menu } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Bell, Search, ShieldAlert, Cpu, Menu, LogOut } from "lucide-react";
 import { Badge } from "@/components/ui/card";
 import { useSidebar } from "@/src/context/SidebarContext";
+import { createClient } from "@/src/infrastructure/supabase/client";
 
 export function Navbar() {
+  const router = useRouter();
   const { toggleSidebar } = useSidebar();
+  const [userName, setUserName] = useState<string>("Utilisateur");
+  const [userInitials, setUserInitials] = useState<string>("U");
+
+  useEffect(() => {
+    async function loadUser() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const meta = user.user_metadata;
+        const fn = meta?.first_name || "";
+        const ln = meta?.last_name || "";
+        const fullName = `${fn} ${ln}`.trim() || user.email?.split("@")[0] || "CEO / Owner";
+        setUserName(fullName);
+
+        const init = (fn[0] || "") + (ln[0] || user.email?.[0] || "U");
+        setUserInitials(init.toUpperCase());
+      }
+    }
+    loadUser();
+  }, []);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
 
   return (
     <header className="h-16 border-b border-border bg-slate-950/80 backdrop-blur px-4 sm:px-6 md:px-8 flex items-center justify-between sticky top-0 z-30">
@@ -42,25 +74,27 @@ export function Navbar() {
           </Badge>
           <Badge variant="outline" className="hidden lg:flex items-center gap-1">
             <ShieldAlert className="w-3 h-3 text-blue-400" />
-            <span>RBAC SERVER ENFORCED</span>
+            <span>RBAC ENFORCED</span>
           </Badge>
         </div>
 
-        {/* Notifications Icon */}
-        <button className="p-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg relative transition-colors">
-          <Bell className="w-4 h-4" />
-          <span className="w-2 h-2 rounded-full bg-primary absolute top-2 right-2 animate-pulse"></span>
-        </button>
-
-        {/* User Account Avatar (Name & Role hidden < md) */}
+        {/* User Account Avatar & Logout */}
         <div className="flex items-center gap-3 pl-2 sm:pl-4 border-l border-slate-800">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-amber-500 flex items-center justify-center font-bold text-white text-xs shadow-md">
-            AF
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white text-xs shadow-md">
+            {userInitials}
           </div>
           <div className="hidden md:block">
-            <p className="text-xs font-semibold text-slate-200">Amadou Fall</p>
-            <p className="text-[10px] font-mono text-amber-400">CEO / OWNER</p>
+            <p className="text-xs font-semibold text-slate-200">{userName}</p>
+            <p className="text-[10px] font-mono text-emerald-400">CEO / OWNER</p>
           </div>
+
+          <button
+            onClick={handleSignOut}
+            title="Déconnexion"
+            className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800/80 rounded-lg transition-colors ml-1"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </div>
     </header>

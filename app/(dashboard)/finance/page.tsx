@@ -19,10 +19,85 @@ import {
 export default function FinanceDashboardPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'accounts' | 'transactions' | 'expenses' | 'transfers' | 'reconciliation'>('overview');
 
-  // Dynamic Finance State (Supabase / Application Services SSOT)
-  // Empty by default when fresh database instance has 0 financial records
   const [accounts, setAccounts] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [orgId, setOrgId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    async function loadFinanceData() {
+      setLoading(true);
+      try {
+        const { createClient } = await import("@/src/infrastructure/supabase/client");
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) return;
+
+        const { data: roles } = await supabase
+          .from("user_organization_roles")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .is("deleted_at", null);
+
+        if (!roles || roles.length === 0) return;
+        const currentOrgId = roles[0].organization_id;
+        setOrgId(currentOrgId);
+
+        const { data: accs } = await supabase
+          .from("financial_accounts")
+          .select("*")
+          .eq("organization_id", currentOrgId);
+
+        if (accs && accs.length > 0) {
+          setAccounts(
+            accs.map((a) => ({
+              id: a.id,
+              name: a.name,
+              type: a.type,
+              balance: Number(a.current_balance || a.opening_balance || 0),
+              currency: a.currency || "XOF",
+              status: a.status || "ACTIVE",
+            }))
+          );
+        } else {
+          setAccounts([
+            { id: "acc-caisse", name: "Caisse Principale", type: "CASH_REGISTER", balance: 0, currency: "XOF", status: "ACTIVE" },
+          ]);
+        }
+
+        const { data: txs } = await supabase
+          .from("transactions")
+          .select("*")
+          .eq("organization_id", currentOrgId)
+          .order("created_at", { ascending: false });
+
+        if (txs) {
+          setTransactions(
+            txs.map((t) => ({
+              id: t.id,
+              date: new Date(t.created_at).toLocaleString("fr-FR"),
+              account: t.account_id || "Caisse Principale",
+              type: t.type || "EXPENSE",
+              direction: t.direction || "OUTFLOW",
+              category: t.category || "GENERAL",
+              amount: Number(t.amount || 0),
+              description: t.description || "Transaction commerciale",
+              status: t.status || "POSTED",
+            }))
+          );
+        }
+      } catch (err) {
+        console.error("[Finance Load Error]", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadFinanceData();
+  }, []);
 
   // Form states
   const [expenseForm, setExpenseForm] = useState({

@@ -17,7 +17,46 @@ import {
 } from "lucide-react";
 
 export default function DeliveryManagementPage() {
-  const [deliveries] = useState<any[]>([]);
+  const [deliveries, setDeliveries] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    async function loadDeliveries() {
+      setLoading(true);
+      try {
+        const { createClient } = await import("@/src/infrastructure/supabase/client");
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) return;
+
+        const { data: roles } = await supabase
+          .from("user_organization_roles")
+          .select("organization_id")
+          .eq("user_id", user.id)
+          .is("deleted_at", null);
+
+        if (!roles || roles.length === 0) return;
+        const currentOrgId = roles[0].organization_id;
+
+        const { data: dels } = await supabase
+          .from("deliveries")
+          .select("*, orders(*)")
+          .eq("organization_id", currentOrgId)
+          .order("created_at", { ascending: false });
+
+        if (dels) setDeliveries(dels);
+      } catch (err) {
+        console.error("[Delivery Load Error]", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDeliveries();
+  }, []);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
@@ -31,16 +70,16 @@ export default function DeliveryManagementPage() {
             <Badge variant="success">DELIVERY ENGINE OK</Badge>
           </div>
           <p className="text-sm text-slate-400 mt-1">
-            Affectation des livreurs, zones, suivi du statut et preuve de livraison (Ouagadougou)
+            Affectation des livreurs, zones, suivi du statut et preuve de livraison
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <DataSourceBadge type="DATABASE" label="DELIVERY ENGINE SSOT" />
-          <Button variant="outline" size="sm">
+          <DataSourceBadge type={deliveries.length > 0 ? "DATABASE" : "EMPTY_STATE"} label="DELIVERY SSOT" />
+          <Button variant="outline" size="sm" onClick={() => alert("Gestion des zones disponible dans les paramètres de livraison.")}>
             <MapPin className="w-4 h-4 mr-2 text-blue-400" />
             Gérer les Zones
           </Button>
-          <Button variant="primary" size="sm">
+          <Button variant="primary" size="sm" onClick={() => alert("Pour créer une livraison, créez d'abord une commande dans l'onglet Opérations -> Nouvelle Commande.")}>
             <Truck className="w-4 h-4 mr-2" />
             Planifier Tournée
           </Button>
