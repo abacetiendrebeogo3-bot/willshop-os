@@ -17,13 +17,17 @@ import {
   ShieldCheck,
   Zap,
   X,
+  ShoppingCart,
+  Truck,
 } from "lucide-react";
 import { useSidebar } from "@/src/context/SidebarContext";
 
 const NAV_ITEMS = [
   { name: "CEO Cockpit", href: "/ceo", icon: LayoutDashboard },
   { name: "Ventes & CRM", href: "/sales", icon: MessageSquare, badge: "Live" },
-  { name: "Opérations", href: "/orders", icon: Package },
+  { name: "Produits & Stock", href: "/operations/products", icon: Package, badge: "SSOT" },
+  { name: "Commandes", href: "/orders", icon: ShoppingCart },
+  { name: "Livraisons", href: "/delivery", icon: Truck },
   { name: "Finance", href: "/finance", icon: Wallet },
   { name: "Automatisation", href: "/automation", icon: Zap, badge: "Auto" },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
