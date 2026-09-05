@@ -21,114 +21,15 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
+
 export default function TeamCockpitPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "workload" | "kanban" | "scorecards" | "escalations">("overview");
 
-  // Mock Active Employees
-  const [employees] = useState([
-    {
-      id: "emp_1",
-      name: "Amadou Fall",
-      role: "OWNER",
-      status: "ACTIVE",
-      activity: "ONLINE",
-      openTasks: 4,
-      urgentTasks: 1,
-      workloadStatus: "BALANCED",
-      score: 95,
-      skills: ["MANAGEMENT", "STRATEGY"],
-    },
-    {
-      id: "emp_2",
-      name: "Fatou Diop",
-      role: "COMMERCIAL",
-      status: "ACTIVE",
-      activity: "ONLINE",
-      openTasks: 7,
-      urgentTasks: 2,
-      workloadStatus: "BALANCED",
-      score: 88,
-      skills: ["SALES", "CRM", "WHATSAPP"],
-    },
-    {
-      id: "emp_3",
-      name: "Moussa Ndiaye",
-      role: "LIVREUR",
-      status: "ACTIVE",
-      activity: "IN_FIELD",
-      openTasks: 10,
-      urgentTasks: 4,
-      workloadStatus: "OVERLOADED",
-      score: 82,
-      skills: ["LOGISTICS", "NAVIGATION"],
-    },
-  ]);
-
-  // Mock Tasks for Kanban Board
-  const [tasks] = useState([
-    {
-      id: "task_1",
-      title: "Relancer 15 prospects chauds WhatsApp",
-      assignedTo: "Fatou Diop",
-      priority: "HIGH",
-      status: "IN_PROGRESS",
-      dueAt: "Aujourd'hui 17:00",
-      source: "CUSTOMER",
-      blocker: null,
-    },
-    {
-      id: "task_2",
-      title: "Livrer commande ORD-2026-0042 à Fann",
-      assignedTo: "Moussa Ndiaye",
-      priority: "URGENT",
-      status: "TODO",
-      dueAt: "Aujourd'hui 14:00",
-      source: "DELIVERY",
-      blocker: null,
-    },
-    {
-      id: "task_3",
-      title: "Réapprovisionner stock T-Shirt Premium (Low Stock)",
-      assignedTo: "Amadou Fall",
-      priority: "HIGH",
-      status: "BLOCKED",
-      dueAt: "Demain 10:00",
-      source: "STOCK",
-      blocker: "Fournisseur en rupture temporaire de tissu",
-    },
-    {
-      id: "task_4",
-      title: "Réconciliation caisse mobile money hier",
-      assignedTo: "Fatou Diop",
-      priority: "MEDIUM",
-      status: "DONE",
-      dueAt: "Hier 18:00",
-      source: "FINANCE",
-      blocker: null,
-    },
-  ]);
-
-  // Mock Escalations & Bottlenecks
-  const [escalations] = useState([
-    {
-      id: "esc_1",
-      taskTitle: "Livrer commande ORD-2026-0039 à Pikine",
-      assignedTo: "Moussa Ndiaye",
-      level: 2,
-      reason: "Tâche en retard de 49h (seuil 48h dépassé) -> Escalade Manager.",
-      triggeredAt: "Il y a 2h",
-      status: "ACTIVE",
-    },
-    {
-      id: "esc_2",
-      taskTitle: "Validation créatifs pub campagne Facebook",
-      assignedTo: "Fatou Diop",
-      level: 1,
-      reason: "Tâche en retard de 26h (seuil 24h dépassé) -> Rappel automatique.",
-      triggeredAt: "Il y a 5h",
-      status: "ACTIVE",
-    },
-  ]);
+  // Team SSOT Data (TeamApplicationServices)
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [escalations, setEscalations] = useState<any[]>([]);
 
   const [bottlenecks] = useState([
     {
@@ -333,7 +234,7 @@ export default function TeamCockpitPage() {
                   </div>
 
                   <div className="flex flex-wrap gap-1 pt-2 border-t border-[#181824]">
-                    {emp.skills.map((s) => (
+                    {emp.skills?.map((s: string) => (
                       <span key={s} className="px-2 py-0.5 bg-[#181824] text-gray-300 text-[10px] rounded font-mono">
                         {s}
                       </span>

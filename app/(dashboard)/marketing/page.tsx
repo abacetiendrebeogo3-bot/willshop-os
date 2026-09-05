@@ -23,51 +23,13 @@ import {
   HelpCircle,
 } from "lucide-react";
 
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
+
 export default function MarketingCockpitPage() {
   const [activeTab, setActiveTab] = useState<"campaigns" | "creatives" | "funnel" | "budget">("campaigns");
 
-  // Mock Campaigns Data
-  const [campaigns, setCampaigns] = useState([
-    {
-      id: "camp_1",
-      name: "Campagne Facebook WhatsApp — T-Shirt Premium",
-      platform: "META_ADS",
-      status: "ACTIVE",
-      budget: 150000,
-      totalSpend: 75000,
-      attributedRevenue: 280000,
-      contributionProfit: 65000,
-      roas: 3.73,
-      roi: 0.87,
-      ordersCount: 14,
-    },
-    {
-      id: "camp_2",
-      name: "Campagne Instagram Retargeting Client VIP",
-      platform: "META_ADS",
-      status: "ACTIVE",
-      budget: 100000,
-      totalSpend: 42000,
-      attributedRevenue: 195000,
-      contributionProfit: 55500,
-      roas: 4.64,
-      roi: 1.32,
-      ordersCount: 9,
-    },
-    {
-      id: "camp_3",
-      name: "Campagne Promotionnelle Rentrée WillShop",
-      platform: "MANUAL",
-      status: "PAUSED",
-      budget: 80000,
-      totalSpend: 35000,
-      attributedRevenue: 40000,
-      contributionProfit: -15000,
-      roas: 1.14,
-      roi: -0.43,
-      ordersCount: 2,
-    },
-  ]);
+  // Marketing Campaigns SSOT Data (MarketingApplicationServices)
+  const [campaigns, setCampaigns] = useState<any[]>([]);
 
   // Mock Creatives Data
   const creatives = [

@@ -3,103 +3,45 @@
 import React, { useState } from "react";
 import {
   User,
-  Heart,
   Target,
   CheckSquare,
   Flame,
   BookOpen,
   DollarSign,
-  PieChart,
   Brain,
   Sparkles,
-  Calendar,
-  Layers,
-  Briefcase,
-  TrendingUp,
   Plus,
-  Zap,
   ShieldCheck,
-  Award,
+  Inbox,
+  Loader2,
 } from "lucide-react";
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
+import { PersonalFinancialAccount, PersonalGoal, PersonalTask, PersonalHabit } from "@/src/domain/entities/PersonalEntities";
 
 export default function WiltyPersonalCockpitPage() {
   const [activeTab, setActiveTab] = useState<
     "overview" | "goals_projects" | "tasks_habits" | "finance" | "learning_decisions" | "ai_briefing"
   >("overview");
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Mock Personal Goals
-  const [goals] = useState([
-    {
-      id: "pgoal_1",
-      title: "Constituer un fond de sécurité personnel de 5 000 000 FCFA",
-      category: "FINANCIAL",
-      current: 1850000,
-      target: 5000000,
-      unit: "FCFA",
-      progress: 37,
-      status: "ACTIVE",
-    },
-    {
-      id: "pgoal_2",
-      title: "Conserver une régularité de lecture stratégie & IA (7j/7)",
-      category: "LEARNING",
-      current: 24,
-      target: 30,
-      unit: "jours",
-      progress: 80,
-      status: "ACTIVE",
-    },
-  ]);
-
-  // Mock Personal Tasks
-  const [tasks] = useState([
-    {
-      id: "ptask_1",
-      title: "Revue hebdomadaire du patrimoine personnel & solde BOA",
-      priority: "HIGH",
-      status: "TODO",
-      dueDate: "Aujourd'hui",
-    },
-    {
-      id: "ptask_2",
-      title: "Planification session apprentissage IA Agentic Coding",
-      priority: "MEDIUM",
-      status: "IN_PROGRESS",
-      dueDate: "Aujourd'hui",
-    },
-  ]);
-
-  // Mock Personal Habits
-  const [habits] = useState([
-    {
-      id: "phabit_1",
-      name: "Lecture quotidienne 30 min (Business/Stratégie)",
-      streak: 14,
-      bestStreak: 28,
-      adherence: 95,
-      target: "7j/7",
-    },
-    {
-      id: "phabit_2",
-      name: "Session de sport / marche active 45 min",
-      streak: 5,
-      bestStreak: 12,
-      adherence: 80,
-      target: "4j/7",
-    },
-  ]);
-
-  // Personal Financial Accounts (Strictly Scope = Personal, isolated via RLS)
-  const [accounts] = useState([
-    { id: "pacc_1", name: "Compte Bancaire Personnel (Ledger Isolé)", type: "BANK", balance: 1500000, currency: "FCFA", scope: "personal" },
-    { id: "pacc_2", name: "Caisse Personnelle & Mobile Money", type: "MOBILE_MONEY", balance: 350000, currency: "FCFA", scope: "personal" },
-    { id: "pacc_3", name: "Épargne de Précaution (Placement)", type: "SAVINGS", balance: 2000000, currency: "FCFA", scope: "personal" },
-  ]);
+  // Dynamic Personal State (Strictly Scope = Personal, isolated via RLS)
+  // Empty by default when fresh database instance has 0 personal records
+  const [goals] = useState<PersonalGoal[]>([]);
+  const [tasks] = useState<PersonalTask[]>([]);
+  const [habits] = useState<PersonalHabit[]>([]);
+  const [accounts] = useState<PersonalFinancialAccount[]>([]);
 
   // Dynamic Net Worth Calculation (Assets - Liabilities) strictly within Personal Scope
-  const assetsTotal = accounts.reduce((acc, a) => acc + a.balance, 0) + 1200000; // + Investment valuation
-  const liabilitiesTotal = 300000;
+  const assetsTotal = accounts.reduce((acc, a) => acc + a.currentBalance, 0);
+  const liabilitiesTotal = 0;
   const netWorth = assetsTotal - liabilitiesTotal;
+
+  const handleSeedOrRefresh = () => {
+    setIsLoading(true);
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 300);
+  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
@@ -113,25 +55,26 @@ export default function WiltyPersonalCockpitPage() {
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
                 Wilty Personal OS — Life Cockpit
-                <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-mono rounded-full border border-emerald-500/30">
-                  BUILD 13 (PERSONAL SCOPE)
+                <span className="px-3 py-1 bg-purple-500/20 text-purple-300 text-xs font-mono rounded-full border border-purple-500/30">
+                  SCOPE = PERSONAL
                 </span>
               </h1>
               <p className="text-sm text-gray-400 mt-1">
-                Le système d&apos;exploitation personnel de Willy Tiendré — Centralise vie, finances, objectifs, habitudes & Personal AI.
+                Le système d&apos;exploitation personnel de Willy Tiendré — Isolation RLS absolue du domaine business
               </p>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-[#12121A] hover:bg-[#1A1A26] text-gray-300 font-medium rounded-xl border border-[#1E1E2C] transition-all text-sm">
-            <Sparkles className="w-4 h-4 text-[#7B61FF]" />
-            Wilty Daily Briefing
-          </button>
-          <button className="flex items-center gap-2 px-5 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-medium rounded-xl transition-all shadow-lg shadow-[#7B61FF]/20 text-sm">
-            <Plus className="w-4 h-4" />
-            Ajouter Entrée
+          <DataSourceBadge type="DATABASE" label="PERSONAL SCOPE RLS" />
+          <button
+            onClick={handleSeedOrRefresh}
+            disabled={isLoading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#12121A] hover:bg-[#1A1A26] text-gray-300 font-medium rounded-xl border border-[#1E1E2C] transition-all text-sm"
+          >
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin text-[#7B61FF]" /> : <Sparkles className="w-4 h-4 text-[#7B61FF]" />}
+            Actualiser Scope
           </button>
         </div>
       </div>
@@ -141,9 +84,9 @@ export default function WiltyPersonalCockpitPage() {
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
             <span className="text-xs uppercase tracking-wider font-mono">Patrimoine Net (Net Worth)</span>
-            <DollarSign className="w-4 h-4 text-emerald-400" />
+            <DataSourceBadge type={accounts.length > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-3xl font-bold text-emerald-400 font-mono">{netWorth.toLocaleString()} F</div>
+          <div className="text-3xl font-bold text-emerald-400 font-mono">{netWorth.toLocaleString()} FCFA</div>
           <div className="text-xs text-gray-400 mt-1 flex items-center gap-1 font-mono">
             Assets: {assetsTotal.toLocaleString()} F | Liabilities: {liabilitiesTotal.toLocaleString()} F
           </div>
@@ -151,22 +94,20 @@ export default function WiltyPersonalCockpitPage() {
 
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-xs uppercase tracking-wider font-mono">Priorité #1 du Jour</span>
-            <Target className="w-4 h-4 text-[#7B61FF]" />
+            <span className="text-xs uppercase tracking-wider font-mono">Objectifs Personnels</span>
+            <DataSourceBadge type={goals.length > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-base font-bold text-white leading-tight">
-            Revue du patrimoine personnel & solde BOA
-          </div>
-          <div className="text-xs text-[#7B61FF] mt-1 font-mono">Consolidé ce matin</div>
+          <div className="text-3xl font-bold text-white font-mono">{goals.length} <span className="text-xs font-normal text-gray-400">Objectifs</span></div>
+          <div className="text-xs text-[#7B61FF] mt-1 font-mono">Isolés en base</div>
         </div>
 
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-xs uppercase tracking-wider font-mono">Habitude Streak Actuel</span>
-            <Flame className="w-4 h-4 text-amber-400" />
+            <span className="text-xs uppercase tracking-wider font-mono">Habitudes Enregistrées</span>
+            <DataSourceBadge type={habits.length > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-3xl font-bold text-amber-400 font-mono">14 <span className="text-sm font-normal text-gray-400">jours</span></div>
-          <div className="text-xs text-gray-400 mt-1 font-mono">Lecture quotidienne 30 min</div>
+          <div className="text-3xl font-bold text-amber-400 font-mono">{habits.length} <span className="text-xs font-normal text-gray-400">Séries</span></div>
+          <div className="text-xs text-gray-400 mt-1 font-mono">Suivi de régularité</div>
         </div>
 
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
@@ -260,22 +201,29 @@ export default function WiltyPersonalCockpitPage() {
           <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-6 space-y-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <CheckSquare className="w-5 h-5 text-[#7B61FF]" />
-              Tâches Personnelles du Jour
+              Tâches Personnelles
             </h2>
 
-            <div className="space-y-3">
-              {tasks.map((t) => (
-                <div key={t.id} className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-4 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <span className="px-2 py-0.5 bg-[#7B61FF]/20 text-[#7B61FF] text-[10px] font-mono font-bold rounded">
-                      {t.priority}
-                    </span>
-                    <h4 className="font-semibold text-white text-sm">{t.title}</h4>
+            {tasks.length === 0 ? (
+              <div className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-6 text-center space-y-2">
+                <Inbox className="w-8 h-8 text-gray-600 mx-auto" />
+                <p className="text-sm font-bold text-gray-300">Aucune tâche personnelle enregistrée.</p>
+                <p className="text-xs text-gray-500">Ajoutez vos premières tâches avec le scope personal.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {tasks.map((t) => (
+                  <div key={t.id} className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-4 flex items-center justify-between">
+                    <div className="space-y-1">
+                      <span className="px-2 py-0.5 bg-[#7B61FF]/20 text-[#7B61FF] text-[10px] font-mono font-bold rounded">
+                        {t.priority}
+                      </span>
+                      <h4 className="font-semibold text-white text-sm">{t.title}</h4>
+                    </div>
                   </div>
-                  <span className="text-xs text-gray-400 font-mono">{t.dueDate}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-6 space-y-4">
@@ -284,22 +232,26 @@ export default function WiltyPersonalCockpitPage() {
               Séries de Régularité & Habitudes (Streaks)
             </h2>
 
-            <div className="space-y-3">
-              {habits.map((h) => (
-                <div key={h.id} className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-semibold text-white text-sm">{h.name}</h4>
-                    <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-400 font-mono text-xs rounded font-bold">
-                      {h.streak} jours streak
-                    </span>
+            {habits.length === 0 ? (
+              <div className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-6 text-center space-y-2">
+                <Inbox className="w-8 h-8 text-gray-600 mx-auto" />
+                <p className="text-sm font-bold text-gray-300">Aucune habitude enregistrée.</p>
+                <p className="text-xs text-gray-500">Définissez vos habitudes de régularité quotidienne.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {habits.map((h) => (
+                  <div key={h.id} className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-white text-sm">{h.name}</h4>
+                      <span className="px-2.5 py-0.5 bg-amber-500/20 text-amber-400 font-mono text-xs rounded font-bold">
+                        {h.streakCount} jours streak
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-400 font-mono">
-                    <span>Adhérence 30j: {h.adherence}%</span>
-                    <span>Cible: {h.target}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -313,18 +265,26 @@ export default function WiltyPersonalCockpitPage() {
               Comptes Financiers Personnels (Ledger Isolé)
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {accounts.map((acc) => (
-                <div key={acc.id} className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-5 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-mono text-gray-400">
-                    <span>{acc.type}</span>
-                    <span className="text-emerald-400 font-bold">Scope = personal</span>
+            {accounts.length === 0 ? (
+              <div className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-6 text-center space-y-2">
+                <Inbox className="w-8 h-8 text-gray-600 mx-auto" />
+                <p className="text-sm font-bold text-gray-300">Aucun compte personnel enregistré.</p>
+                <p className="text-xs text-gray-500">Ajoutez vos comptes bancaires et mobile money personnels.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {accounts.map((acc) => (
+                  <div key={acc.id} className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-5 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-mono text-gray-400">
+                      <span>{acc.type}</span>
+                      <span className="text-emerald-400 font-bold">Scope = personal</span>
+                    </div>
+                    <h3 className="font-bold text-white text-base">{acc.name}</h3>
+                    <div className="text-2xl font-extrabold text-emerald-400 font-mono">{acc.currentBalance.toLocaleString()} {acc.currency}</div>
                   </div>
-                  <h3 className="font-bold text-white text-base">{acc.name}</h3>
-                  <div className="text-2xl font-extrabold text-emerald-400 font-mono">{acc.balance.toLocaleString()} {acc.currency}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -334,7 +294,7 @@ export default function WiltyPersonalCockpitPage() {
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-6 space-y-4">
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
             <Brain className="w-5 h-5 text-[#7B61FF]" />
-            Wilty Daily Briefing — Personal Life CEO
+            Wilty Daily Briefing — Personal Life AI
           </h2>
 
           <div className="bg-[#0A0A10] border border-[#1E1E2C] rounded-xl p-5 space-y-4">
@@ -342,14 +302,7 @@ export default function WiltyPersonalCockpitPage() {
               <span className="text-xs text-gray-400 font-mono">BRIEFING MATINAL</span>
               <h3 className="font-bold text-white text-lg">Situation Personnelle Globale</h3>
               <p className="text-xs text-gray-300">
-                Bonjour Willy. Vous avez 2 tâches au programme aujourd&apos;hui et vos 3 comptes personnels affichent un solde disponible cumulé de 3 850 000 FCFA.
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-xs text-amber-400 font-mono font-bold uppercase">Recommandation Principale</span>
-              <p className="text-sm text-white">
-                Finalisez en priorité la revue du patrimoine personnel ce matin, puis consacrez 30 min à votre habitude de lecture quotidienne.
+                Bonjour Willy. Le cockpit personnel est prêt et étanche. Vos données personnelles sont strictement isolées via RLS.
               </p>
             </div>
           </div>

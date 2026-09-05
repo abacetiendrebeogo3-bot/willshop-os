@@ -23,127 +23,19 @@ import {
   Zap,
 } from "lucide-react";
 
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
+
 export default function StrategyCockpitPage() {
   const [activeTab, setActiveTab] = useState<
     "overview" | "goals" | "initiatives" | "roadmap" | "risks_decisions" | "recommendations"
   >("overview");
 
-  // Mock Strategic Goals
-  const [goals] = useState([
-    {
-      id: "sgoal_1",
-      title: "Atteindre 2 000 000 FCFA de Contribution Profit Mensuelle",
-      type: "FINANCIAL",
-      kpiKey: "contribution_profit",
-      baseline: 500000,
-      target: 2000000,
-      current: 1350000,
-      unit: "FCFA",
-      status: "ON_TRACK",
-      forecast: 1950000,
-      confidence: "HIGH",
-      dueDate: "31 Déc 2026",
-    },
-    {
-      id: "sgoal_2",
-      title: "Atteindre un taux de livraison réussie ≥ 92%",
-      type: "OPERATIONS",
-      kpiKey: "delivery_rate",
-      baseline: 80.0,
-      target: 92.0,
-      current: 85.5,
-      unit: "%",
-      status: "AT_RISK",
-      forecast: 88.0,
-      confidence: "MEDIUM",
-      dueDate: "30 Nov 2026",
-    },
-    {
-      id: "sgoal_3",
-      title: "Réduire le CAC global sous 2 500 FCFA",
-      type: "MARKETING",
-      kpiKey: "cac",
-      baseline: 4200,
-      target: 2500,
-      current: 3100,
-      unit: "FCFA",
-      status: "ON_TRACK",
-      forecast: 2450,
-      confidence: "HIGH",
-      dueDate: "31 Déc 2026",
-    },
-  ]);
+  // Strategic Goals & Initiatives SSOT (StrategyApplicationServices)
+  const [goals, setGoals] = useState<any[]>([]);
+  const [initiatives, setInitiatives] = useState<any[]>([]);
 
-  // Mock Initiatives
-  const [initiatives] = useState([
-    {
-      id: "init_1",
-      title: "Campagne Marketing WhatsApp Retargeting Client VIP",
-      impact: "HIGH",
-      urgency: "HIGH",
-      effort: "MEDIUM",
-      risk: "LOW",
-      score: 11.5,
-      budget: 100000,
-      expectedRevenue: 800000,
-      expectedProfit: 350000,
-      roi: 350,
-      status: "ACTIVE",
-    },
-    {
-      id: "init_2",
-      title: "Optimisation de la Flotte de Livreurs Zone Pikine/Guediawaye",
-      impact: "HIGH",
-      urgency: "HIGH",
-      effort: "HIGH",
-      risk: "MEDIUM",
-      score: 8.5,
-      budget: 150000,
-      expectedRevenue: 400000,
-      expectedProfit: 180000,
-      roi: 120,
-      status: "PLANNED",
-    },
-    {
-      id: "init_3",
-      title: "Refonte du Catalogue Produit & Packs Promotionnels",
-      impact: "MEDIUM",
-      urgency: "LOW",
-      effort: "LOW",
-      risk: "LOW",
-      score: 7.0,
-      budget: 50000,
-      expectedRevenue: 300000,
-      expectedProfit: 120000,
-      roi: 240,
-      status: "ACTIVE",
-    },
-  ]);
-
-  // Mock Recommendations (Stop/Start/Continue)
-  const [recommendations] = useState([
-    {
-      action: "CONTINUE",
-      title: "Accélérer l'initiative 'Campagne Marketing WhatsApp VIP'",
-      reason: "Fort impact stratégique (Score 11.5) et ROI prévisionnel de +350%.",
-      evidence: "CA généré: 800 000 FCFA, Marge nette respectée.",
-      confidence: "HIGH",
-    },
-    {
-      action: "START",
-      title: "Lancer une initiative spécifique sur le délai de retour livreurs Fann",
-      reason: "L'objectif Taux de Livraison est étiqueté AT_RISK (85.5% vs cible 92%).",
-      evidence: "Analyse des goulots d'étranglement Delivery Build 11.",
-      confidence: "HIGH",
-    },
-    {
-      action: "STOP",
-      title: "Arrêter les campagnes publicitaires manuelles non tracées",
-      reason: "Absence de tag d'attribution UTM certifié entrainant un risque de dépenses à fonds perdus.",
-      evidence: "Attribution confident (LOW) signalée sur 3 dépenses.",
-      confidence: "MEDIUM",
-    },
-  ]);
+  // Strategic Recommendations SSOT (StrategyApplicationServices)
+  const [recommendations, setRecommendations] = useState<any[]>([]);
 
   // Mock Strategic Risks
   const [risks] = useState([

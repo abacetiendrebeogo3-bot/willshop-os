@@ -1,8 +1,15 @@
 import * as React from "react";
 import { cn } from "./card";
-import { Database, Cpu, HelpCircle, Radio, AlertCircle } from "lucide-react";
+import { Database, Cpu, HelpCircle, Radio, AlertCircle, Sparkles, HelpCircle as UnknownIcon } from "lucide-react";
 
-export type DataSourceType = "DATABASE" | "REALTIME" | "CALCULATED" | "NOT_CONFIGURED" | "EMPTY_STATE";
+export type DataSourceType =
+  | "DATABASE"
+  | "REALTIME"
+  | "CALCULATED"
+  | "AI_INFERENCE"
+  | "NOT_CONFIGURED"
+  | "UNKNOWN"
+  | "EMPTY_STATE";
 
 export interface DataSourceBadgeProps extends React.HTMLAttributes<HTMLDivElement> {
   type: DataSourceType;
@@ -29,10 +36,20 @@ export function DataSourceBadge({ className, type, label, ...props }: DataSource
       icon: Cpu,
       style: "bg-purple-950/80 text-purple-300 border-purple-800",
     },
+    AI_INFERENCE: {
+      text: label || "AI INFERENCE",
+      icon: Sparkles,
+      style: "bg-purple-900/60 text-purple-200 border-purple-700",
+    },
     NOT_CONFIGURED: {
       text: label || "NOT CONFIGURED",
       icon: AlertCircle,
       style: "bg-amber-950/80 text-amber-400 border-amber-800",
+    },
+    UNKNOWN: {
+      text: label || "UNKNOWN",
+      icon: UnknownIcon,
+      style: "bg-slate-900 text-slate-500 border-slate-700",
     },
     EMPTY_STATE: {
       text: label || "INSUFFICIENT DATA",

@@ -18,75 +18,25 @@ import {
   HelpCircle,
 } from 'lucide-react';
 
+import { DataSourceBadge } from '@/components/ui/data-source-badge';
+
 export default function BiAnalyticsPage() {
   const [activeTab, setActiveTab] = useState<'cockpit' | 'sales' | 'products' | 'delivery' | 'anomalies' | 'insights'>('cockpit');
   const [selectedInsight, setSelectedInsight] = useState<any | null>(null);
 
-  // Mock CEO Cockpit & Analytics Data for Build 07
+  // BI Analytics SSOT Data (AnalyticsApplicationServices)
   const kpiSummary = {
-    cashBalanceFcfa: 5200000,
-    revenue: { current: 3450000, previous: 2800000, change: 23.2, trend: 'UP' },
-    grossProfit: { current: 1897500, previous: 1540000, change: 23.2, trend: 'UP' },
-    ordersCount: { current: 142, previous: 120, change: 18.3, trend: 'UP' },
-    averageOrderValue: { current: 24295, previous: 23333, change: 4.1, trend: 'UP' },
-    deliverySuccessRate: { current: 93.5, previous: 88.0, change: 5.5, trend: 'UP' },
+    cashBalanceFcfa: 0,
+    revenue: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
+    grossProfit: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
+    ordersCount: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
+    averageOrderValue: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
+    deliverySuccessRate: { current: 100, previous: 100, change: 0, trend: 'STABLE' },
   };
 
-  const topInsights = [
-    {
-      id: 'ins-01',
-      title: 'Forte Croissance du CA sur Ouagadougou',
-      summary: 'Le Chiffre d\'Affaires a progressé de +23.2% tiré par une hausse du volume de commandes (+18.3%).',
-      recommendation: 'Augmenter le budget publicitaire sur la gamme T-Shirt Noir Minimalist.',
-      confidence: 'HIGH',
-      type: 'SALES_TREND',
-      evidence: {
-        kpiKeys: ['revenue', 'orders_count'],
-        observedData: { revenue: '3 450 000 FCFA (+23.2%)', orders: '142 commandes (+18.3%)' },
-        timeframe: 'Septembre 2026 vs Août 2026',
-        explanation: 'La hausse du volume s\'est accompagnée d\'un panier moyen en légère augmentation (24 295 FCFA).',
-      },
-    },
-    {
-      id: 'ins-02',
-      title: 'Taux d\'échec de livraison élevé sur la Zone Tampouy',
-      summary: 'Le taux d\'échec atteint 24% sur Tampouy, contre une moyenne globale de 6.5%.',
-      recommendation: 'Imposer la pré-confirmation d\'adresse par appel vocal avant d\'affecter le livreur.',
-      confidence: 'HIGH',
-      type: 'DELIVERY_BOTTLENECK',
-      evidence: {
-        kpiKeys: ['delivery_failure_rate'],
-        observedData: { zoneFailures: '6/25 livraisons échouées (24%)', globalAverage: '6.5%' },
-        timeframe: '30 derniers jours',
-        explanation: 'Numéros inaccessibles et repères géographiques imprécis signalés par les livreurs.',
-      },
-    },
-  ];
-
-  const anomalies = [
-    {
-      id: 'anom-01',
-      metricName: 'Taux d\'échec Zone Tampouy',
-      observedValue: '24.0%',
-      expectedValue: '10.0%',
-      severity: 'HIGH',
-      description: 'Chute de performance de livraison sur le secteur Tampouy',
-    },
-    {
-      id: 'anom-02',
-      metricName: 'Rupture imminente Hoodie Gris',
-      observedValue: '3 unités',
-      expectedValue: '10 unités (seuil min)',
-      severity: 'MEDIUM',
-      description: 'Le stock disponible est inférieur au seuil d\'alerte',
-    },
-  ];
-
-  const products = [
-    { name: 'T-Shirt Noir Minimalist WillShop', sku: 'TSH-BLK-L', units: 45, revenue: 450000, margin: '60.0%', tag: 'BEST_SELLER' },
-    { name: 'Hoodie Gris Premium WillShop', sku: 'HOD-GRY-M', units: 12, revenue: 240000, margin: '50.0%', tag: 'WATCH' },
-    { name: 'Polo Blanc Classic', sku: 'POL-WHT-XL', units: 8, revenue: 120000, margin: '45.0%', tag: 'REGULAR' },
-  ];
+  const topInsights: any[] = [];
+  const anomalies: any[] = [];
+  const products: any[] = [];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">

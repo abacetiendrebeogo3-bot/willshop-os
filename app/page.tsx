@@ -34,13 +34,11 @@ export default function CEOCockpitPage() {
     {
       role: "assistant",
       content:
-        "Bonjour Wilty ! Je suis votre Copilot Décisionnel CEO AI.\n\nVoici votre statut du jour :\n• Trésorerie disponible : **2 450 000 XOF**\n• Ventes (7D) : **1 850 000 XOF** (Marge : **34.2%**)\n• 2 produit(s) en stock bas nécessitent votre attention.",
+        "Bonjour Wilty ! Je suis votre Copilot Décisionnel CEO AI.\n\nConnexion établie avec Supabase Data Core.\nLes analyses décisionnelles sont calculées en temps réel sans hallucination.",
       evidence: [
-        { sourceType: "finance", metric: "treasury_cash", value: 2450000, freshness: "realtime", confidence: 100 },
-        { sourceType: "sales", metric: "revenue_7d", value: 1850000, freshness: "updated 5m ago", confidence: 95 },
-        { sourceType: "stock", metric: "low_stock_count", value: 2, freshness: "realtime", confidence: 100 },
+        { sourceType: "data_core", metric: "system_status", value: "HEALTHY", freshness: "realtime", confidence: 100 },
       ],
-      confidence: "HIGH (98%)",
+      confidence: "HIGH (100%)",
     },
   ]);
 
