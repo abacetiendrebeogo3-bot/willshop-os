@@ -27,28 +27,14 @@ export default function TeamCockpitPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "workload" | "kanban" | "scorecards" | "escalations">("overview");
 
   // Team SSOT Data (TeamApplicationServices)
+  // Team SSOT Data (TeamApplicationServices)
   const [employees, setEmployees] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [escalations, setEscalations] = useState<any[]>([]);
+  const [bottlenecks] = useState<any[]>([]);
 
-  const [bottlenecks] = useState([
-    {
-      source: "DELIVERY",
-      delayedCount: 4,
-      totalCount: 10,
-      avgDelay: "38h",
-      severity: "HIGH",
-      summary: "Goulet d'étranglement majeur détecté dans le processus DELIVERY: 4 retards sur zone Pikine/Guediawaye.",
-    },
-    {
-      source: "STOCK",
-      delayedCount: 2,
-      totalCount: 5,
-      avgDelay: "24h",
-      severity: "MEDIUM",
-      summary: "Délai de réapprovisionnement supérieur de 25% au délai cible.",
-    },
-  ]);
+  const overdueTasks = tasks.filter((t) => t.status === "OVERDUE").length;
+  const blockedTasks = tasks.filter((t) => t.status === "BLOCKED").length;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
@@ -62,9 +48,6 @@ export default function TeamCockpitPage() {
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
                 Team & Productivity Cockpit
-                <span className="px-3 py-1 bg-[#7B61FF]/20 text-[#7B61FF] text-xs font-mono rounded-full border border-[#7B61FF]/30">
-                  BUILD 11
-                </span>
               </h1>
               <p className="text-sm text-gray-400 mt-1">
                 Le moteur d&apos;exécution de WillShop OS — Connecte objectifs, tâches, charge, performance & escalades.
@@ -84,51 +67,51 @@ export default function TeamCockpitPage() {
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
             <span className="text-xs uppercase tracking-wider font-mono">Membres Actifs</span>
-            <Users className="w-4 h-4 text-[#7B61FF]" />
+            <DataSourceBadge type={employees.length > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-3xl font-bold text-white">3</div>
-          <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1 font-mono">
-            <UserCheck className="w-3.5 h-3.5" /> 100% opérationnels
+          <div className="text-3xl font-bold text-white font-mono">{employees.length}</div>
+          <div className="text-xs text-gray-400 mt-1 flex items-center gap-1 font-mono">
+            <UserCheck className="w-3.5 h-3.5" /> Enregistrés en base
           </div>
         </div>
 
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
             <span className="text-xs uppercase tracking-wider font-mono">Tâches Ouvertes</span>
-            <CheckSquare className="w-4 h-4 text-blue-400" />
+            <DataSourceBadge type={tasks.length > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-3xl font-bold text-white">21</div>
-          <div className="text-xs text-blue-400 mt-1 font-mono">En cours d&apos;exécution</div>
+          <div className="text-3xl font-bold text-white font-mono">{tasks.length}</div>
+          <div className="text-xs text-slate-400 mt-1 font-mono">En cours d&apos;exécution</div>
         </div>
 
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
             <span className="text-xs uppercase tracking-wider font-mono">En Retard (Overdue)</span>
-            <Clock className="w-4 h-4 text-amber-400" />
+            <DataSourceBadge type={overdueTasks > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-3xl font-bold text-amber-400">4</div>
-          <div className="text-xs text-amber-400 mt-1 font-mono flex items-center gap-1">
-            <AlertCircle className="w-3.5 h-3.5" /> Action requise
+          <div className="text-3xl font-bold text-amber-400 font-mono">{overdueTasks}</div>
+          <div className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-1">
+            <AlertCircle className="w-3.5 h-3.5" /> Tâches hors délai
           </div>
         </div>
 
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
             <span className="text-xs uppercase tracking-wider font-mono">Tâches Bloquées</span>
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
+            <DataSourceBadge type={blockedTasks > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-3xl font-bold text-rose-400">1</div>
-          <div className="text-xs text-rose-400 mt-1 font-mono">Fournisseur tissu</div>
+          <div className="text-3xl font-bold text-rose-400 font-mono">{blockedTasks}</div>
+          <div className="text-xs text-slate-400 mt-1 font-mono">Blocages actifs</div>
         </div>
 
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 hover:border-[#7B61FF]/40 transition-all">
           <div className="flex items-center justify-between text-gray-400 mb-2">
             <span className="text-xs uppercase tracking-wider font-mono">Escalades Actives</span>
-            <Flame className="w-4 h-4 text-[#7B61FF]" />
+            <DataSourceBadge type={escalations.length > 0 ? "DATABASE" : "EMPTY_STATE"} />
           </div>
-          <div className="text-3xl font-bold text-purple-400">2</div>
-          <div className="text-xs text-purple-400 mt-1 font-mono flex items-center gap-1">
-            <Sparkles className="w-3.5 h-3.5" /> 1 Level 2 (Manager)
+          <div className="text-3xl font-bold text-purple-400 font-mono">{escalations.length}</div>
+          <div className="text-xs text-slate-400 mt-1 font-mono flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5 text-purple-400" /> Suivi automatique
           </div>
         </div>
       </div>

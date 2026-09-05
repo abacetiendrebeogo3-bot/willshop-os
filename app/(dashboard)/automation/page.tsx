@@ -24,148 +24,24 @@ export default function AutomationDashboardPage() {
   const [globalKillSwitch, setGlobalKillSwitch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
 
-  // Mock Rules Data
+  // Automation Engine SSOT (AutomationApplicationServices)
+  // Registered system rules with 0 executions when database has 0 historical logs
   const [rules, setRules] = useState([
-    {
-      id: "rule_1",
-      name: "Alerte Stock Bas",
-      category: "STOCK",
-      enabled: true,
-      trigger: "stock.low",
-      permission: "GREEN",
-      executions: 14,
-      lastRun: "Il y a 12 min",
-    },
-    {
-      id: "rule_2",
-      name: "Alerte Rupture de Stock",
-      category: "STOCK",
-      enabled: true,
-      trigger: "stock.out",
-      permission: "GREEN",
-      executions: 3,
-      lastRun: "Hier, 18:45",
-    },
-    {
-      id: "rule_3",
-      name: "Suivi Livraison Échouée",
-      category: "DELIVERY",
-      enabled: true,
-      trigger: "delivery.failed",
-      permission: "GREEN",
-      executions: 8,
-      lastRun: "Il y a 1h",
-    },
-    {
-      id: "rule_4",
-      name: "Confirmation Livraison Réussie",
-      category: "DELIVERY",
-      enabled: true,
-      trigger: "delivery.delivered",
-      permission: "GREEN",
-      executions: 42,
-      lastRun: "Il y a 5 min",
-    },
-    {
-      id: "rule_5",
-      name: "Notification Paiement Reçu",
-      category: "FINANCE",
-      enabled: true,
-      trigger: "payment.received",
-      permission: "GREEN",
-      executions: 29,
-      lastRun: "Il y a 35 min",
-    },
-    {
-      id: "rule_6",
-      name: "Objectif Entreprise à Risque",
-      category: "BI",
-      enabled: true,
-      trigger: "goal.at_risk",
-      permission: "GREEN",
-      executions: 2,
-      lastRun: "Hier, 09:00",
-    },
-    {
-      id: "rule_7",
-      name: "Alerte Anomalie BI",
-      category: "BI",
-      enabled: true,
-      trigger: "anomaly.detected",
-      permission: "GREEN",
-      executions: 5,
-      lastRun: "Il y a 2h",
-    },
-    {
-      id: "rule_8",
-      name: "Approbation Dépense Importante",
-      category: "FINANCE",
-      enabled: true,
-      trigger: "finance.expense_created",
-      permission: "YELLOW",
-      executions: 6,
-      lastRun: "Il y a 4h",
-    },
+    { id: "rule_1", name: "Alerte Stock Bas", category: "STOCK", enabled: true, trigger: "stock.low", permission: "GREEN", executions: 0, lastRun: "Jamais" },
+    { id: "rule_2", name: "Alerte Rupture de Stock", category: "STOCK", enabled: true, trigger: "stock.out", permission: "GREEN", executions: 0, lastRun: "Jamais" },
+    { id: "rule_3", name: "Suivi Livraison Échouée", category: "DELIVERY", enabled: true, trigger: "delivery.failed", permission: "GREEN", executions: 0, lastRun: "Jamais" },
+    { id: "rule_4", name: "Confirmation Livraison Réussie", category: "DELIVERY", enabled: true, trigger: "delivery.delivered", permission: "GREEN", executions: 0, lastRun: "Jamais" },
+    { id: "rule_5", name: "Notification Paiement Reçu", category: "FINANCE", enabled: true, trigger: "payment.received", permission: "GREEN", executions: 0, lastRun: "Jamais" },
+    { id: "rule_6", name: "Objectif Entreprise à Risque", category: "BI", enabled: true, trigger: "goal.at_risk", permission: "GREEN", executions: 0, lastRun: "Jamais" },
+    { id: "rule_7", name: "Alerte Anomalie BI", category: "BI", enabled: true, trigger: "anomaly.detected", permission: "GREEN", executions: 0, lastRun: "Jamais" },
+    { id: "rule_8", name: "Approbation Dépense Importante", category: "FINANCE", enabled: true, trigger: "finance.expense_created", permission: "YELLOW", executions: 0, lastRun: "Jamais" },
   ]);
 
-  // Mock Pending Approvals
-  const [approvals, setApprovals] = useState([
-    {
-      id: "appr_101",
-      automationName: "Approbation Dépense Importante",
-      actionType: "CREATE",
-      permissionLevel: "YELLOW",
-      risk: "MEDIUM",
-      reason: "Création de dépense > 100 000 XOF (Fournisseur Emballage #42)",
-      evidence: { amount: 150000, currency: "XOF", category: "OpEx", requester: "Agent Finance" },
-      requestedAt: "Il y a 15 min",
-      expiresIn: "47h 45m",
-      status: "PENDING_APPROVAL",
-    },
-    {
-      id: "appr_102",
-      automationName: "Relance WhatsApp Client VIP",
-      actionType: "WHATSAPP",
-      permissionLevel: "YELLOW",
-      risk: "MEDIUM",
-      reason: "Envoi automatique d'une offre commerciale personnalisée",
-      evidence: { customer: "Amadou Diallo", phone: "+226 70 00 11 22", totalOrders: 7 },
-      requestedAt: "Il y a 1h 20m",
-      expiresIn: "46h 40m",
-      status: "PENDING_APPROVAL",
-    },
-  ]);
+  // Pending Approvals SSOT (Empty by default when database has 0 pending approvals)
+  const [approvals, setApprovals] = useState<any[]>([]);
 
-  // Mock Executions Log
-  const executions = [
-    {
-      id: "exec_501",
-      ruleName: "Confirmation Livraison Réussie",
-      trigger: "delivery.delivered",
-      status: "COMPLETED",
-      idempotencyKey: "rule_4_evt_991_act_1",
-      timestamp: "05/09 02:05:12",
-      duration: "42ms",
-    },
-    {
-      id: "exec_502",
-      ruleName: "Notification Paiement Reçu",
-      trigger: "payment.received",
-      status: "COMPLETED",
-      idempotencyKey: "rule_5_evt_989_act_1",
-      timestamp: "05/09 01:45:00",
-      duration: "38ms",
-    },
-    {
-      id: "exec_503",
-      ruleName: "Approbation Dépense Importante",
-      trigger: "finance.expense_created",
-      status: "WAITING_APPROVAL",
-      idempotencyKey: "rule_8_evt_985_act_1",
-      timestamp: "05/09 01:10:22",
-      duration: "18ms",
-    },
-  ];
+  // Executions Log SSOT (Empty by default when database has 0 execution logs)
+  const executions: any[] = [];
 
   const handleToggleRule = (id: string) => {
     setRules(rules.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));

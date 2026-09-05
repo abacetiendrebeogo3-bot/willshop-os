@@ -209,17 +209,17 @@ export default function SettingsPage() {
 
           <div className="space-y-3 font-sans text-xs">
             {[
-              { role: "OWNER / CEO", desc: "Accès total business & validation des actions YELLOW/RED", status: "Active", count: 1 },
-              { role: "MANAGER", desc: "Supervision des opérations, ventes, stocks et livraisons", status: "Active", count: 2 },
-              { role: "COMMERCIAL", desc: "Gestion du CRM WhatsApp et prise de commandes", status: "Active", count: 4 },
-              { role: "LIVREUR", desc: "Mise à jour des statuts de livraison et encaissement", status: "Active", count: 3 },
+              { role: "OWNER / CEO", desc: "Accès total business & validation des actions YELLOW/RED", status: "Active", count: 0 },
+              { role: "MANAGER", desc: "Supervision des opérations, ventes, stocks et livraisons", status: "Inactive", count: 0 },
+              { role: "COMMERCIAL", desc: "Gestion du CRM WhatsApp et prise de commandes", status: "Inactive", count: 0 },
+              { role: "LIVREUR", desc: "Mise à jour des statuts de livraison et encaissement", status: "Inactive", count: 0 },
               { role: "VIEWER", desc: "Consultation lecture seule pour audits externes", status: "Inactive", count: 0 },
             ].map((r, idx) => (
               <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-slate-100 font-mono">{r.role}</span>
-                    <span className="px-2 py-0.5 rounded bg-blue-950 text-blue-400 text-[10px] font-mono border border-blue-800">
+                    <span className="px-2 py-0.5 rounded bg-slate-900 text-slate-400 text-[10px] font-mono border border-slate-800">
                       {r.count} Membre(s)
                     </span>
                   </div>
@@ -281,15 +281,15 @@ export default function SettingsPage() {
               </h2>
               <p className="text-xs text-slate-400 mt-1">Statut des connexions réelles sans exposition de clés secrètes</p>
             </div>
-            <DataSourceBadge type="REALTIME" label="INTEGRATION HEALTH" />
+            <DataSourceBadge type="NOT_CONFIGURED" label="INTEGRATIONS PENDING" />
           </div>
 
           <div className="space-y-3 font-sans text-xs">
             {[
-              { name: "WhatsApp Business API", type: "Webhooks CRM", status: "NOT_CONFIGURED", lastSync: "Non configuré", health: "PENDING" },
-              { name: "Meta Ads Graph API", type: "Marketing Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré", health: "PENDING" },
-              { name: "Orange Money / Wave Gateway", type: "Finance Engine", status: "CONNECTED", lastSync: "Temps réel DB", health: "100%" },
-              { name: "Service SMS Livraisons", type: "Delivery Engine", status: "CONNECTED", lastSync: "Temps réel DB", health: "98%" },
+              { name: "WhatsApp Business API", type: "Webhooks CRM", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
+              { name: "Meta Ads Graph API", type: "Marketing Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
+              { name: "Orange Money / Wave Gateway", type: "Finance Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
+              { name: "Service SMS Livraisons", type: "Delivery Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
             ].map((integ, idx) => (
               <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div>
@@ -297,11 +297,7 @@ export default function SettingsPage() {
                   <span className="text-[11px] font-mono text-slate-400">{integ.type} • Synchro: {integ.lastSync}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  {integ.status === "CONNECTED" ? (
-                    <DataSourceBadge type="REALTIME" label={integ.status} />
-                  ) : (
-                    <DataSourceBadge type="NOT_CONFIGURED" label="PILOT PENDING" />
-                  )}
+                  <DataSourceBadge type="NOT_CONFIGURED" label="PILOT PENDING" />
                 </div>
               </div>
             ))}
@@ -361,10 +357,10 @@ export default function SettingsPage() {
 
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
             <div>
-              <span className="font-bold text-slate-100 block">Workflows Actifs en Arrière-Plan</span>
+              <span className="font-bold text-slate-100 block">Workflows Enregistrés</span>
               <span className="text-slate-400 font-mono text-[11px]">Stock Alert, Failed Delivery Recovery, Customer Nurturing</span>
             </div>
-            <Badge variant="success">14 Workflows Actifs</Badge>
+            <Badge variant="outline">8 Règles Configurées</Badge>
           </div>
         </Card>
       )}

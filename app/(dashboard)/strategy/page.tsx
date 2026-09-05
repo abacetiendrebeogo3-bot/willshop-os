@@ -37,29 +37,12 @@ export default function StrategyCockpitPage() {
   // Strategic Recommendations SSOT (StrategyApplicationServices)
   const [recommendations, setRecommendations] = useState<any[]>([]);
 
-  // Mock Strategic Risks
-  const [risks] = useState([
-    {
-      id: "risk_1",
-      title: "Hausse des coûts publicitaires Meta (CAC deterioration)",
-      probability: "HIGH",
-      impact: "MEDIUM",
-      score: 6,
-      category: "HIGH",
-      mitigation: "Réguler les budgets pub automatiquement via MarketingBudgetService si ROI < 1.0",
-      status: "OPEN",
-    },
-    {
-      id: "risk_2",
-      title: "Rupture de stock sur les T-Shirts Premium Gagnants",
-      probability: "MEDIUM",
-      impact: "HIGH",
-      score: 6,
-      category: "HIGH",
-      mitigation: "Recommander réapprovisionnement automatique dès seuil stock bas (10 unités)",
-      status: "MONITORED",
-    },
-  ]);
+  // Strategic Risks SSOT (Empty by default when fresh DB instance has 0 risks)
+  const [risks] = useState<any[]>([]);
+
+  const strategicHealthScore = goals.length > 0
+    ? Math.round(goals.reduce((acc, g) => acc + (g.current / g.target) * 100, 0) / goals.length)
+    : null;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
@@ -73,9 +56,6 @@ export default function StrategyCockpitPage() {
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
                 Strategy & Goals Cockpit
-                <span className="px-3 py-1 bg-[#7B61FF]/20 text-[#7B61FF] text-xs font-mono rounded-full border border-[#7B61FF]/30">
-                  BUILD 12
-                </span>
               </h1>
               <p className="text-sm text-gray-400 mt-1">
                 Le système stratégique de WillShop OS — Relie la vision du CEO à l&apos;exécution opérationnelle.
@@ -85,6 +65,7 @@ export default function StrategyCockpitPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <DataSourceBadge type={goals.length > 0 ? "DATABASE" : "EMPTY_STATE"} label="STRATEGY ENGINE" />
           <button className="flex items-center gap-2 px-4 py-2.5 bg-[#12121A] hover:bg-[#1A1A26] text-gray-300 font-medium rounded-xl border border-[#1E1E2C] transition-all text-sm">
             <Sparkles className="w-4 h-4 text-[#7B61FF]" />
             Simuler Scénario What-If
@@ -104,7 +85,9 @@ export default function StrategyCockpitPage() {
               <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 text-xs font-mono font-semibold rounded-full border border-emerald-500/20">
                 🟢 VISION ACTIVE (2026)
               </span>
-              <span className="text-xs text-gray-400 font-mono">Alignement Stratégique: 88%</span>
+              <span className="text-xs text-gray-400 font-mono">
+                Alignement Stratégique: {strategicHealthScore !== null ? `${strategicHealthScore}%` : "—"}
+              </span>
             </div>
             <h2 className="text-2xl font-bold text-white tracking-tight">
               Stratégie de Croissance & Rentabilité WillShop 2026
@@ -117,13 +100,16 @@ export default function StrategyCockpitPage() {
           <div className="flex items-center gap-6 bg-[#0A0A10]/80 p-4 rounded-xl border border-[#1E1E2C]">
             <div className="text-center">
               <span className="text-xs text-gray-400 font-mono uppercase tracking-wider">Health Score</span>
-              <div className="text-4xl font-extrabold text-[#7B61FF]">82<span className="text-sm text-gray-400 font-normal">/100</span></div>
+              <div className="text-4xl font-extrabold text-[#7B61FF]">
+                {strategicHealthScore !== null ? `${strategicHealthScore}` : "—"}
+                <span className="text-sm text-gray-400 font-normal">{strategicHealthScore !== null ? "/100" : ""}</span>
+              </div>
             </div>
             <div className="h-10 w-[1px] bg-[#181824]" />
             <div className="text-xs text-gray-300 space-y-1">
-              <p>Finance: <span className="font-bold text-emerald-400">85%</span></p>
-              <p>Ventes: <span className="font-bold text-emerald-400">80%</span></p>
-              <p>Opérations: <span className="font-bold text-amber-400">75%</span></p>
+              <p>Objectifs: <span className="font-bold text-slate-400">{goals.length}</span></p>
+              <p>Initiatives: <span className="font-bold text-slate-400">{initiatives.length}</span></p>
+              <p>Risques: <span className="font-bold text-slate-400">{risks.length}</span></p>
             </div>
           </div>
         </div>

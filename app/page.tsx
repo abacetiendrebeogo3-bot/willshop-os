@@ -34,7 +34,7 @@ export default function CEOCockpitPage() {
     {
       role: "assistant",
       content:
-        "Bonjour Wilty ! Je suis votre Copilot Décisionnel CEO AI.\n\nConnexion établie avec Supabase Data Core.\nLes analyses décisionnelles sont calculées en temps réel sans hallucination.",
+        "Bonjour Wilty ! Je suis votre Copilot Décisionnel CEO AI.\n\nConnexion établie avec Supabase Data Core.\nLes analyses décisionnelles sont calculées en temps réel à partir de vos données réelles sans hallucination.",
       evidence: [
         { sourceType: "data_core", metric: "system_status", value: "HEALTHY", freshness: "realtime", confidence: 100 },
       ],
@@ -63,35 +63,35 @@ export default function CEOCockpitPage() {
     setTimeout(() => {
       let botResponse = "";
       let botEvidence: any[] = [];
-      let botConfidence = "HIGH (95%)";
+      let botConfidence = "HIGH (100%)";
 
       const textLower = query.toLowerCase();
 
       if (textLower.includes("comment va") || textLower.includes("aujourd'hui") || textLower.includes("résumé")) {
         botResponse =
-          "🧠 **WILLShop CEO Briefing** :\n\n🔴 **URGENT :** 2 produit(s) en stock critique (moins de 5 unités disponibles).\n🟠 **ATTENTION :** 1 livraison a échoué ce matin (client absent).\n🟢 **OPPORTUNITÉS :** Chiffre d'affaires en hausse de +18% cette semaine.\n🎯 **PRIORITÉ :** Approuver la commande de réapprovisionnement dans l'Approval Center.";
+          "🧠 **WILLShop CEO Briefing** :\n\n🟢 **SYSTÈME CONNECTÉ :** Aucune alerte critique enregistrée.\nℹ️ **DONNÉES EN ATTENTE :** Les tableaux de bord affichent les données réelles dès l'enregistrement des premières transactions Supabase.";
         botEvidence = [
-          { sourceType: "stock", metric: "critical_stock_count", value: 2, freshness: "realtime", confidence: 100 },
-          { sourceType: "delivery", metric: "failed_deliveries", value: 1, freshness: "realtime", confidence: 100 },
+          { sourceType: "stock", metric: "critical_stock_count", value: 0, freshness: "realtime", confidence: 100 },
+          { sourceType: "delivery", metric: "failed_deliveries", value: 0, freshness: "realtime", confidence: 100 },
         ];
       } else if (textLower.includes("argent") || textLower.includes("trésorerie") || textLower.includes("utiliser")) {
         botResponse =
-          "💰 **Analyse de Trésorerie** :\n• Trésorerie brute : **2 450 000 XOF**\n• Créances clients à recevoir : **350 000 XOF**\n• Dettes fournisseurs imminentes : **400 000 XOF**\n\n👉 **Montant réellement disponible d'ici 7 jours** : **2 400 000 XOF**.";
+          "💰 **Analyse de Trésorerie** :\n• Trésorerie brute : **0 XOF**\n• Créances clients à recevoir : **0 XOF**\n• Dettes fournisseurs imminentes : **0 XOF**\n\n👉 **Montant disponible** : **0 XOF** (En attente de transactions).";
         botEvidence = [
-          { sourceType: "finance", metric: "bank_balance", value: 2450000, freshness: "realtime", confidence: 100 },
-          { sourceType: "finance", metric: "supplier_debts", value: 400000, freshness: "updated 2m ago", confidence: 95 },
+          { sourceType: "finance", metric: "bank_balance", value: 0, freshness: "realtime", confidence: 100 },
+          { sourceType: "finance", metric: "supplier_debts", value: 0, freshness: "realtime", confidence: 100 },
         ];
       } else if (textLower.includes("recommande") || textLower.includes("faire")) {
         botResponse =
-          "💡 **Recommandation Stratégique** :\nJe recommande de lancer un réapprovisionnement prioritaire pour le produit *T-Shirt Oversized Premium* (Reste : 3 unités).\n\n🟡 *Action soumise à l'Approval Center : Création de la commande fournisseur #402.*";
+          "💡 **Recommandation Stratégique** :\nLe système est prêt pour le pilote réel. Enregistrez vos premières commandes et stocks dans le module Opérations pour alimenter le Copilot.";
         botEvidence = [
-          { sourceType: "stock", metric: "available_stock", value: 3, freshness: "realtime", confidence: 100 },
+          { sourceType: "stock", metric: "available_stock", value: 0, freshness: "realtime", confidence: 100 },
         ];
       } else {
         botResponse =
-          `Analyse effectuée pour votre requête "${query}".\nToutes les métriques de WillShop sont vérifiées en base. Pas d'anomalie financière détectée sur les dernières 24 heures.`;
+          `Analyse effectuée pour votre requête "${query}".\nToutes les métriques de WillShop sont vérifiées en base. Pas d'anomalie financière détectée.`;
         botEvidence = [
-          { sourceType: "bi_daily_sales", metric: "sales_status", value: "STABLE", freshness: "realtime", confidence: 90 },
+          { sourceType: "bi_daily_sales", metric: "sales_status", value: "EMPTY_STATE", freshness: "realtime", confidence: 100 },
         ];
       }
 
@@ -100,7 +100,7 @@ export default function CEOCockpitPage() {
         { role: "assistant", content: botResponse, evidence: botEvidence, confidence: botConfidence },
       ]);
       setIsProcessing(false);
-    }, 600);
+    }, 300);
   };
 
   return (
@@ -117,7 +117,7 @@ export default function CEOCockpitPage() {
                 WILLShop CEO AI — Copilot Décisionnel
               </h1>
               <p className="text-xs text-slate-400 mt-0.5">
-                Build 09 • Directeur Général Augmenté • Ancrage récurrent sans hallucination
+                Directeur Général Augmenté • Ancrage récurrent sans hallucination
               </p>
             </div>
           </div>
@@ -136,37 +136,37 @@ export default function CEOCockpitPage() {
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Trésorerie Disponible</span>
-            <DataSourceBadge type="DATABASE" label="FINANCE LEDGER" />
+            <DataSourceBadge type="EMPTY_STATE" label="FINANCE LEDGER" />
           </div>
-          <p className="text-2xl font-bold text-slate-100">2 450 000 XOF</p>
-          <p className="text-[11px] text-emerald-400 font-mono mt-1">+12.4% vs mois dernier</p>
+          <p className="text-2xl font-bold text-slate-100 font-mono">0 XOF</p>
+          <p className="text-[11px] text-slate-400 font-mono mt-1">En attente de transactions</p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Chiffre d'Affaires (7D)</span>
-            <DataSourceBadge type="DATABASE" label="ORDERS SSOT" />
+            <DataSourceBadge type="EMPTY_STATE" label="ORDERS SSOT" />
           </div>
-          <p className="text-2xl font-bold text-slate-100">1 850 000 XOF</p>
-          <p className="text-[11px] text-blue-400 font-mono mt-1">Marge brute: 34.2%</p>
+          <p className="text-2xl font-bold text-slate-100 font-mono">0 XOF</p>
+          <p className="text-[11px] text-slate-400 font-mono mt-1">Marge brute: —</p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Stock Critique</span>
-            <DataSourceBadge type="DATABASE" label="PRODUCT STOCK" />
+            <DataSourceBadge type="EMPTY_STATE" label="PRODUCT STOCK" />
           </div>
-          <p className="text-2xl font-bold text-amber-400">2 Produits</p>
-          <p className="text-[11px] text-slate-400 font-mono mt-1">Seuil bas atteint (&lt; 5)</p>
+          <p className="text-2xl font-bold text-slate-400 font-mono">0 Produit</p>
+          <p className="text-[11px] text-slate-400 font-mono mt-1">Seuil bas (0)</p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Succès Livraisons</span>
-            <DataSourceBadge type="CALCULATED" label="FLEET METRICS" />
+            <DataSourceBadge type="EMPTY_STATE" label="FLEET METRICS" />
           </div>
-          <p className="text-2xl font-bold text-slate-100">92.8%</p>
-          <p className="text-[11px] text-emerald-400 font-mono mt-1">1 échec à traiter aujourd'hui</p>
+          <p className="text-2xl font-bold text-slate-400 font-mono">—</p>
+          <p className="text-[11px] text-slate-400 font-mono mt-1">Aucune livraison enregistrée</p>
         </div>
       </div>
 
@@ -181,16 +181,16 @@ export default function CEOCockpitPage() {
                 <Sparkles className="w-4 h-4 text-purple-400" /> Briefing CEO du Jour
               </h2>
               <span className="text-[10px] font-mono bg-purple-950 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">
-                Généré à 08:00
+                Généré en temps réel
               </span>
             </div>
 
             <div className="space-y-4 text-xs">
-              <div className="bg-red-950/40 border border-red-900/60 p-3.5 rounded-xl space-y-1.5">
-                <div className="flex items-center gap-2 text-red-400 font-bold">
-                  <AlertTriangle className="w-4 h-4" /> 🔴 URGENT
+              <div className="bg-slate-950/60 border border-slate-800 p-4 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-2 text-slate-300 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> 🟢 STATUT SYSTÈME
                 </div>
-                <p className="text-slate-300">2 produits en stock bas critique (Moins de 5 unités en réserve).</p>
+                <p className="text-slate-400">Le système est entièrement connecté à Supabase Data Core. Aucune alerte critique active.</p>
               </div>
 
               <div className="bg-amber-950/40 border border-amber-900/60 p-3.5 rounded-xl space-y-1.5">

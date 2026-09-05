@@ -1,5 +1,8 @@
-import React from "react";
+"use client";
+
+import React, { useState } from "react";
 import { Card, Badge, Button } from "@/components/ui/card";
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
 import {
   Truck,
   MapPin,
@@ -10,9 +13,12 @@ import {
   FileCheck,
   ArrowRight,
   Plus,
+  Inbox,
 } from "lucide-react";
 
 export default function DeliveryManagementPage() {
+  const [deliveries] = useState<any[]>([]);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
       {/* Header */}
@@ -29,6 +35,7 @@ export default function DeliveryManagementPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <DataSourceBadge type="DATABASE" label="DELIVERY ENGINE SSOT" />
           <Button variant="outline" size="sm">
             <MapPin className="w-4 h-4 mr-2 text-blue-400" />
             Gérer les Zones
@@ -43,26 +50,38 @@ export default function DeliveryManagementPage() {
       {/* Delivery Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
-          <span className="text-xs font-mono text-slate-400 uppercase">En Attente d'Affectation</span>
-          <p className="text-2xl font-bold text-amber-400 mt-1 font-mono">3 Livraisons</p>
-          <p className="text-[11px] text-amber-300 mt-1">PENDING</p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">En Attente d'Affectation</span>
+            <DataSourceBadge type="EMPTY_STATE" />
+          </div>
+          <p className="text-2xl font-bold text-slate-400 mt-1 font-mono">0 Livraison</p>
+          <p className="text-[11px] text-slate-400 mt-1 font-mono">PENDING</p>
         </Card>
 
         <Card>
-          <span className="text-xs font-mono text-slate-400 uppercase">En Transit</span>
-          <p className="text-2xl font-bold text-blue-400 mt-1 font-mono">5 Livraisons</p>
-          <p className="text-[11px] text-blue-300 mt-1 font-mono">Livreurs en cours</p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">En Transit</span>
+            <DataSourceBadge type="EMPTY_STATE" />
+          </div>
+          <p className="text-2xl font-bold text-slate-400 mt-1 font-mono">0 Livraison</p>
+          <p className="text-[11px] text-slate-400 mt-1 font-mono">Livreurs en cours</p>
         </Card>
 
         <Card>
-          <span className="text-xs font-mono text-slate-400 uppercase">Livrées Aujourd'hui</span>
-          <p className="text-2xl font-bold text-emerald-400 mt-1 font-mono">18 Livraisons</p>
-          <p className="text-[11px] text-emerald-300 mt-1 font-mono">DELIVERED & CLOSED</p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">Livrées Aujourd'hui</span>
+            <DataSourceBadge type="EMPTY_STATE" />
+          </div>
+          <p className="text-2xl font-bold text-slate-400 mt-1 font-mono">0 Livraison</p>
+          <p className="text-[11px] text-slate-400 mt-1 font-mono">DELIVERED & CLOSED</p>
         </Card>
 
         <Card>
-          <span className="text-xs font-mono text-slate-400 uppercase">Livreurs Actifs</span>
-          <p className="text-2xl font-bold text-slate-100 mt-1 font-mono">4 / 4 Disponibles</p>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-slate-400 uppercase">Livreurs Actifs</span>
+            <DataSourceBadge type="EMPTY_STATE" />
+          </div>
+          <p className="text-2xl font-bold text-slate-400 mt-1 font-mono">0 / 0</p>
           <p className="text-[11px] text-slate-400 mt-1">Secteurs Ouagadougou</p>
         </Card>
       </div>
@@ -76,65 +95,56 @@ export default function DeliveryManagementPage() {
           <Badge variant="outline">Proof of Delivery Ready</Badge>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-mono">
-            <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800">
-              <tr>
-                <th className="p-3">COMMANDE</th>
-                <th className="p-3">CLIENT & ADRESSE</th>
-                <th className="p-3">ZONE & FRAIS</th>
-                <th className="p-3">LIVREUR AFFECTÉ</th>
-                <th className="p-3">STATUT</th>
-                <th className="p-3 text-right">ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 text-slate-200">
-              <tr>
-                <td className="p-3 font-bold text-blue-400">WS-2026-0001</td>
-                <td className="p-3">
-                  <p className="font-bold text-slate-100">Moussa Traoré</p>
-                  <p className="text-[10px] text-slate-400">Secteur 15, Ouagadougou</p>
-                </td>
-                <td className="p-3">
-                  <p className="text-slate-200">Ouaga Sud</p>
-                  <p className="text-[10px] text-slate-400">1,500 XOF</p>
-                </td>
-                <td className="p-3">
-                  <span className="text-slate-100 font-semibold">Ibrahim Compaoré</span>
-                </td>
-                <td className="p-3">
-                  <Badge variant="default">IN_TRANSIT</Badge>
-                </td>
-                <td className="p-3 text-right">
-                  <Button variant="primary" size="sm">
-                    Preuve de Livraison <FileCheck className="w-3.5 h-3.5 ml-1.5" />
-                  </Button>
-                </td>
-              </tr>
-              <tr>
-                <td className="p-3 font-bold text-slate-400">WS-2026-0003</td>
-                <td className="p-3">
-                  <p className="font-bold text-slate-100">Fatoumata Diallo</p>
-                  <p className="text-[10px] text-slate-400">Kossodo, Ouagadougou</p>
-                </td>
-                <td className="p-3">
-                  <p className="text-slate-200">Ouaga Nord</p>
-                  <p className="text-[10px] text-slate-400">2,000 XOF</p>
-                </td>
-                <td className="p-3 text-slate-500">Non affecté</td>
-                <td className="p-3">
-                  <Badge variant="warning">PENDING</Badge>
-                </td>
-                <td className="p-3 text-right">
-                  <Button variant="secondary" size="sm">
-                    Affecter Livreur <UserCheck className="w-3.5 h-3.5 ml-1.5 text-amber-400" />
-                  </Button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        {deliveries.length === 0 ? (
+          <div className="text-center py-12 space-y-2">
+            <Inbox className="w-8 h-8 mx-auto text-slate-600" />
+            <p className="text-xs text-slate-400 font-medium">Aucune livraison enregistrée</p>
+            <p className="text-[11px] text-slate-500">Les tournées et livraisons planifiées s'afficheront ici.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-mono">
+              <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th className="p-3">COMMANDE</th>
+                  <th className="p-3">CLIENT & ADRESSE</th>
+                  <th className="p-3">ZONE & FRAIS</th>
+                  <th className="p-3">LIVREUR AFFECTÉ</th>
+                  <th className="p-3">STATUT</th>
+                  <th className="p-3 text-right">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60 text-slate-200">
+                {deliveries.map((del) => (
+                  <tr key={del.id}>
+                    <td className="p-3 font-bold text-blue-400">{del.orderNumber}</td>
+                    <td className="p-3">
+                      <p className="font-bold text-slate-100">{del.customerName}</p>
+                      <p className="text-[10px] text-slate-400">{del.address}</p>
+                    </td>
+                    <td className="p-3">
+                      <p className="text-slate-200">{del.zone}</p>
+                      <p className="text-[10px] text-slate-400">{del.fee.toLocaleString()} XOF</p>
+                    </td>
+                    <td className="p-3">
+                      <span className="text-slate-100 font-semibold">{del.driverName || "Non affecté"}</span>
+                    </td>
+                    <td className="p-3">
+                      <Badge variant="default">{del.status}</Badge>
+                    </td>
+                    <td className="p-3 text-right">
+                      <Button variant="primary" size="sm">
+                        Preuve <FileCheck className="w-3.5 h-3.5 ml-1.5" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );
 }
+

@@ -19,48 +19,10 @@ import {
 export default function FinanceDashboardPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'accounts' | 'transactions' | 'expenses' | 'transfers' | 'reconciliation'>('overview');
 
-  // Dummy / State data for testing Finance Engine UI
-  const [accounts, setAccounts] = useState([
-    { id: 'acc-1', name: 'Caisse Principale WillShop', type: 'CASH_REGISTER', balance: 450000, currency: 'XOF', status: 'ACTIVE' },
-    { id: 'acc-2', name: 'Orange Money Business', type: 'MOBILE_MONEY', balance: 1250000, currency: 'XOF', status: 'ACTIVE' },
-    { id: 'acc-3', name: 'Coris Bank Pro', type: 'BANK_ACCOUNT', balance: 3500000, currency: 'XOF', status: 'ACTIVE' },
-  ]);
-
-  const [transactions, setTransactions] = useState([
-    {
-      id: 'tx-101',
-      date: '2026-09-05 14:30',
-      account: 'Orange Money Business',
-      type: 'INCOME',
-      direction: 'INFLOW',
-      category: 'PRODUCT_SALE',
-      amount: 45000,
-      description: 'Paiement commande #WS-2026-0089',
-      status: 'POSTED',
-    },
-    {
-      id: 'tx-102',
-      date: '2026-09-05 11:15',
-      account: 'Caisse Principale WillShop',
-      type: 'EXPENSE',
-      direction: 'OUTFLOW',
-      category: 'FACEBOOK_ADS',
-      amount: 25000,
-      description: 'Campagne Facebook Ads - Pack Rentabilité',
-      status: 'POSTED',
-    },
-    {
-      id: 'tx-103',
-      date: '2026-09-04 16:00',
-      account: 'Coris Bank Pro',
-      type: 'EXPENSE',
-      direction: 'OUTFLOW',
-      category: 'OWNER_DRAW',
-      amount: 100000,
-      description: 'Retrait Wilty (Capital Personnel / Equity Outflow)',
-      status: 'POSTED',
-    },
-  ]);
+  // Dynamic Finance State (Supabase / Application Services SSOT)
+  // Empty by default when fresh database instance has 0 financial records
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
 
   // Form states
   const [expenseForm, setExpenseForm] = useState({

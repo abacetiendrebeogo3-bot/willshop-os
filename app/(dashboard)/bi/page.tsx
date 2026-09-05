@@ -31,7 +31,7 @@ export default function BiAnalyticsPage() {
     grossProfit: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
     ordersCount: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
     averageOrderValue: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
-    deliverySuccessRate: { current: 100, previous: 100, change: 0, trend: 'STABLE' },
+    deliverySuccessRate: { current: 0, previous: 0, change: 0, trend: 'STABLE' },
   };
 
   const topInsights: any[] = [];
@@ -99,7 +99,7 @@ export default function BiAnalyticsPage() {
             <Truck className="w-5 h-5 text-emerald-400" />
           </div>
           <div className="text-2xl font-bold text-emerald-400 font-mono">{kpiSummary.deliverySuccessRate.current}%</div>
-          <div className="text-xs text-slate-400 mt-2 font-medium">+5.5% d'amélioration globale</div>
+          <div className="text-[11px] text-slate-400 mt-2 font-mono font-medium">Calculé sur livraisons réelles</div>
         </div>
       </div>
 

@@ -31,40 +31,8 @@ export default function MarketingCockpitPage() {
   // Marketing Campaigns SSOT Data (MarketingApplicationServices)
   const [campaigns, setCampaigns] = useState<any[]>([]);
 
-  // Mock Creatives Data
-  const creatives = [
-    {
-      id: "crea_1",
-      name: "Visuel T-Shirt Noir — Promo 20%",
-      type: "IMAGE",
-      statusTag: "WINNER",
-      ctr: 4.2,
-      cpc: 42,
-      conversions: 14,
-      impressions: 25000,
-    },
-    {
-      id: "crea_2",
-      name: "Vidéo Démonstration Qualité Tissu",
-      type: "VIDEO",
-      statusTag: "WATCH",
-      ctr: 2.8,
-      cpc: 65,
-      conversions: 6,
-      impressions: 18000,
-    },
-    {
-      id: "crea_3",
-      name: "Carrousel Modèles & Couleurs",
-      type: "CAROUSEL",
-      statusTag: "FATIGUE",
-      ctr: 1.2,
-      cpc: 120,
-      conversions: 1,
-      impressions: 12000,
-      reason: "CTR en baisse de -40% sur les 7 derniers jours",
-    },
-  ];
+  // Marketing Creatives SSOT Data (Empty by default when fresh DB instance has 0 creative records)
+  const [creatives] = useState<any[]>([]);
 
   const handleToggleCampaign = (id: string) => {
     setCampaigns(
@@ -115,7 +83,7 @@ export default function MarketingCockpitPage() {
             <TrendingUp className="w-4 h-4 text-emerald-400" />
           </div>
           <p className="text-2xl font-bold text-slate-100">{totalRevenue.toLocaleString()} XOF</p>
-          <p className="text-[11px] text-slate-400 font-mono mt-1">Commandes attribuées: 25</p>
+          <p className="text-[11px] text-slate-400 font-mono mt-1">Commandes attribuées: {campaigns.length}</p>
         </div>
 
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
