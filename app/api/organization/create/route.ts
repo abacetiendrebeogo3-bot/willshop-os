@@ -85,8 +85,9 @@ export async function POST(request: NextRequest) {
     // 4. Create default financial account (Caisse Principale)
     await supabaseAdmin.from('financial_accounts').insert({
       organization_id: org.id,
-      account_name: 'Caisse Principale',
-      account_type: 'CASH',
+      name: 'Caisse Principale',
+      type: 'CASH_REGISTER',
+      opening_balance: 0,
       current_balance: 0,
       currency: currency || 'XOF',
       status: 'ACTIVE',

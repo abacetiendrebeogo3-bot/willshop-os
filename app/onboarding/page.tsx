@@ -133,7 +133,13 @@ export default function OnboardingPage() {
         }),
       });
 
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (jsonErr) {
+        data = { error: `Réponse serveur invalide (${res.status}): ${text.substring(0, 150)}` };
+      }
 
       if (!res.ok || data.error) {
         setErrorMessage(data.error || "Erreur lors de la création de l'entreprise");
@@ -144,7 +150,11 @@ export default function OnboardingPage() {
       setOrganization(data.organization);
       setCurrentStep(2);
     } catch (err: any) {
-      setErrorMessage(err.message || "Erreur réseau lors de la création de l'entreprise");
+      let msg = err?.message || "Erreur réseau lors de la création de l'entreprise";
+      if (msg.includes("Unexpected end of JSON input") || msg.includes("JSON.parse")) {
+        msg = "Erreur de communication avec le serveur (réponse vide). Veuillez réessayer.";
+      }
+      setErrorMessage(msg);
     } finally {
       setIsLoading(false);
     }
@@ -284,8 +294,9 @@ export default function OnboardingPage() {
       const supabase = createClient();
       await supabase.from("financial_accounts").insert({
         organization_id: organization.id,
-        account_name: paymentMethod === "ORANGE_MONEY" ? "Caisse Orange Money" : "Caisse Principale",
-        account_type: paymentMethod === "ORANGE_MONEY" ? "MOBILE_MONEY" : "CASH",
+        name: paymentMethod === "ORANGE_MONEY" ? "Caisse Orange Money" : "Caisse Principale",
+        type: paymentMethod === "ORANGE_MONEY" ? "MOBILE_MONEY" : "CASH_REGISTER",
+        opening_balance: Number(initialCashBalance) || 0,
         current_balance: Number(initialCashBalance) || 0,
         currency: currency || "XOF",
         status: "ACTIVE",
