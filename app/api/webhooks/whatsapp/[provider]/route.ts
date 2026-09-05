@@ -228,6 +228,7 @@ export async function POST(
         messageType: m.message_type,
         content: m.content || "",
         status: m.status,
+        metadata: {},
         sentAt: new Date(m.created_at),
         createdAt: new Date(m.created_at),
       }));
