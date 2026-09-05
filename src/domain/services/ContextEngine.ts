@@ -25,6 +25,7 @@ export interface BusinessSnapshot {
 export class ContextEngine {
   /**
    * Constructs a minimal Business Snapshot from BI and Data Core summaries.
+   * Enforces strict separate computation of revenueToday vs revenue7Days and 7D COGS.
    */
   public static buildBusinessSnapshot(
     orgId: string,
@@ -33,7 +34,7 @@ export class ContextEngine {
       revenueToday?: number;
       revenue7Days?: number;
       grossProfit7Days?: number;
-      ordersCount7Days?: number;
+      ordersCountToday?: number;
       pendingOrdersCount?: number;
       failedDeliveriesCount?: number;
       lowStockProductsCount?: number;
@@ -42,25 +43,25 @@ export class ContextEngine {
       customerReceivablesTotal?: number;
     }
   ): BusinessSnapshot {
-    const rev = biData.revenue7Days || 0;
-    const profit = biData.grossProfit7Days || 0;
-    const margin = rev > 0 ? Math.round((profit / rev) * 1000) / 10 : 0;
+    const rev7D = biData.revenue7Days || 0;
+    const profit7D = biData.grossProfit7Days || 0;
+    const margin = rev7D > 0 ? Math.round((profit7D / rev7D) * 1000) / 10 : 0;
 
     return {
       organizationId: orgId,
       treasuryCash: biData.cashBalance || 0,
       revenueToday: biData.revenueToday || 0,
-      revenue7Days: rev,
-      grossProfit7Days: profit,
+      revenue7Days: rev7D,
+      grossProfit7Days: profit7D,
       grossMarginPercent: margin,
-      ordersTodayCount: biData.ordersCount7Days || 0,
+      ordersTodayCount: biData.ordersCountToday || 0,
       pendingOrdersCount: biData.pendingOrdersCount || 0,
       failedDeliveriesCount: biData.failedDeliveriesCount || 0,
       lowStockProductsCount: biData.lowStockProductsCount || 0,
       outOfStockProductsCount: biData.outOfStockProductsCount || 0,
       supplierDebtsTotal: biData.supplierDebtsTotal || 0,
       customerReceivablesTotal: biData.customerReceivablesTotal || 0,
-      activeGoalsCount: 3,
+      activeGoalsCount: 1,
       dataFreshness: 'realtime',
     };
   }
@@ -71,13 +72,14 @@ export class ContextEngine {
   public static formatSnapshotForPrompt(snapshot: BusinessSnapshot): string {
     return `
 BUSINESS SNAPSHOT (Organization: ${snapshot.organizationId}):
-- Trésorerie Banque/Caisse : ${snapshot.treasuryCash.toLocaleString()} XOF
-- Revenu 7D : ${snapshot.revenue7Days.toLocaleString()} XOF
+- Trésorerie Pro Disponible : ${snapshot.treasuryCash.toLocaleString()} XOF
+- CA Aujourd'hui : ${snapshot.revenueToday.toLocaleString()} XOF (${snapshot.ordersTodayCount} commande(s))
+- CA 7 jours (7D) : ${snapshot.revenue7Days.toLocaleString()} XOF
 - Marge Brute 7D : ${snapshot.grossProfit7Days.toLocaleString()} XOF (${snapshot.grossMarginPercent}%)
 - Commandes en attente : ${snapshot.pendingOrdersCount}
-- Livraisons échouées : ${snapshot.failedDeliveriesCount}
-- Produits en stock critique : ${snapshot.lowStockProductsCount} (Ruptures: ${snapshot.outOfStockProductsCount})
-- Créances Clients : ${snapshot.customerReceivablesTotal.toLocaleString()} XOF
+- Livraisons échouées nécessitant attention : ${snapshot.failedDeliveriesCount}
+- Produits en stock critique (Disponible <= Seuil bas) : ${snapshot.lowStockProductsCount} (Ruptures: ${snapshot.outOfStockProductsCount})
+- Créances Clients (Par Commande Dûe) : ${snapshot.customerReceivablesTotal.toLocaleString()} XOF
 - Dettes Fournisseurs : ${snapshot.supplierDebtsTotal.toLocaleString()} XOF
 - Fraîcheur des données : ${snapshot.dataFreshness}
 `.trim();
