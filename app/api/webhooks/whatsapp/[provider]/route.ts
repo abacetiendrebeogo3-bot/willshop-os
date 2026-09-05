@@ -235,8 +235,12 @@ export async function POST(
       const mockCustomer = {
         id: customerId,
         organizationId: targetOrgId,
+        firstName: "Client",
+        lastName: cleanPhone.slice(-4),
         fullName: `Client ${cleanPhone.slice(-4)}`,
         phone: cleanPhone,
+        city: "Ouagadougou",
+        source: "WHATSAPP",
         status: "ACTIVE" as const,
         createdAt: new Date(),
         updatedAt: new Date(),
