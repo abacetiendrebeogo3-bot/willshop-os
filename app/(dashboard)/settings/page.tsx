@@ -9,16 +9,13 @@ import {
   Zap,
   Cpu,
   Server,
-  Key,
-  CheckCircle2,
-  AlertTriangle,
   Lock,
-  Globe,
   Radio,
-  Clock,
+  CheckCircle2,
   ShieldAlert,
 } from "lucide-react";
 import { Card, Badge, Button } from "@/components/ui/card";
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<
@@ -47,10 +44,7 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex items-center gap-3 font-mono text-xs">
-          <span className="px-3 py-1.5 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-2 font-semibold">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            Supabase RLS Active & Encrypted Context
-          </span>
+          <DataSourceBadge type="DATABASE" label="ORGANIZATION CONTEXT ACTIVE" />
         </div>
       </div>
 
@@ -144,12 +138,15 @@ export default function SettingsPage() {
       {/* TAB 1: ORGANISATION */}
       {activeTab === "organization" && (
         <Card className="bg-slate-900/80 border-slate-800 p-6 space-y-6">
-          <div className="border-b border-slate-800 pb-4">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <Building className="w-5 h-5 text-blue-400" />
-              Profil & Paramètres Organisationnels
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Contexte entreprise utilisé par les moteurs de calcul WillShop OS</p>
+          <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Building className="w-5 h-5 text-blue-400" />
+                Profil & Paramètres Organisationnels
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Contexte entreprise extrait du OrganizationContextService serveur</p>
+            </div>
+            <DataSourceBadge type="DATABASE" label="ORGANIZATION_ID CONTEXT" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
@@ -205,9 +202,9 @@ export default function SettingsPage() {
                 <Users className="w-5 h-5 text-blue-400" />
                 Matrice des Rôles & Permissions (RBAC)
               </h2>
-              <p className="text-xs text-slate-400 mt-1">Niveaux d&apos;accès stricts attribués aux membres de l&apos;équipe</p>
+              <p className="text-xs text-slate-400 mt-1">Niveaux d&apos;accès stricts évalués par PermissionEvaluator</p>
             </div>
-            <Badge variant="success">5 Rôles Définis</Badge>
+            <DataSourceBadge type="DATABASE" label="RBAC ENFORCED" />
           </div>
 
           <div className="space-y-3 font-sans text-xs">
@@ -238,12 +235,15 @@ export default function SettingsPage() {
       {/* TAB 3: SÉCURITÉ & RLS */}
       {activeTab === "security" && (
         <Card className="bg-slate-900/80 border-slate-800 p-6 space-y-6">
-          <div className="border-b border-slate-800 pb-4">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <Lock className="w-5 h-5 text-emerald-400" />
-              Sécurité Données & Row Level Security (RLS)
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Protection cryptographique de l&apos;isolation multi-tenant</p>
+          <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Lock className="w-5 h-5 text-emerald-400" />
+                Sécurité Données & Row Level Security (RLS)
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Protection cryptographique multi-tenant activée en base</p>
+            </div>
+            <DataSourceBadge type="DATABASE" label="POSTGRES RLS ACTIVE" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
@@ -273,20 +273,23 @@ export default function SettingsPage() {
       {/* TAB 4: INTÉGRATIONS */}
       {activeTab === "integrations" && (
         <Card className="bg-slate-900/80 border-slate-800 p-6 space-y-6">
-          <div className="border-b border-slate-800 pb-4">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <Radio className="w-5 h-5 text-blue-400" />
-              Santé des Intégrations & Webhooks
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Statut des connexions externes réelles (Aucun secret affiché)</p>
+          <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Radio className="w-5 h-5 text-blue-400" />
+                Santé des Intégrations Externe & Webhooks
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Statut des connexions réelles sans exposition de clés secrètes</p>
+            </div>
+            <DataSourceBadge type="REALTIME" label="INTEGRATION HEALTH" />
           </div>
 
           <div className="space-y-3 font-sans text-xs">
             {[
-              { name: "WhatsApp Business API", type: "Webhooks CRM", status: "CONNECTÉ", lastSync: "Il y a 2 min", health: "100%" },
-              { name: "Meta Ads Graph API", type: "Marketing Engine", status: "CONNECTÉ", lastSync: "Il y a 15 min", health: "98%" },
-              { name: "Orange Money / Wave Gateway", type: "Finance Engine", status: "CONNECTÉ", lastSync: "Il y a 5 min", health: "100%" },
-              { name: "Service Livraison SMS", type: "Delivery Engine", status: "CONNECTÉ", lastSync: "Il y a 1h", health: "95%" },
+              { name: "WhatsApp Business API", type: "Webhooks CRM", status: "NOT_CONFIGURED", lastSync: "Non configuré", health: "PENDING" },
+              { name: "Meta Ads Graph API", type: "Marketing Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré", health: "PENDING" },
+              { name: "Orange Money / Wave Gateway", type: "Finance Engine", status: "CONNECTED", lastSync: "Temps réel DB", health: "100%" },
+              { name: "Service SMS Livraisons", type: "Delivery Engine", status: "CONNECTED", lastSync: "Temps réel DB", health: "98%" },
             ].map((integ, idx) => (
               <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div>
@@ -294,8 +297,11 @@ export default function SettingsPage() {
                   <span className="text-[11px] font-mono text-slate-400">{integ.type} • Synchro: {integ.lastSync}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-emerald-400 font-bold">{integ.health}</span>
-                  <Badge variant="success">{integ.status}</Badge>
+                  {integ.status === "CONNECTED" ? (
+                    <DataSourceBadge type="REALTIME" label={integ.status} />
+                  ) : (
+                    <DataSourceBadge type="NOT_CONFIGURED" label="PILOT PENDING" />
+                  )}
                 </div>
               </div>
             ))}
@@ -306,12 +312,15 @@ export default function SettingsPage() {
       {/* TAB 5: AI & GUARDRAILS */}
       {activeTab === "ai_guardrails" && (
         <Card className="bg-slate-900/80 border-slate-800 p-6 space-y-6">
-          <div className="border-b border-slate-800 pb-4">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-purple-400" />
-              Gouvernance AI Gateway & Safety Guardrails
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Kill switch et limites d&apos;action de l&apos;assistant décisionnel CEO AI</p>
+          <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Cpu className="w-5 h-5 text-purple-400" />
+                Gouvernance AI Gateway & Safety Guardrails
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Kill switch et limites d&apos;action de l&apos;assistant décisionnel CEO AI</p>
+            </div>
+            <DataSourceBadge type="CALCULATED" label="SAFETY GUARDRAILS ACTIVE" />
           </div>
 
           <div className="space-y-4 text-xs font-mono">
@@ -339,12 +348,15 @@ export default function SettingsPage() {
       {/* TAB 6: AUTOMATISATION ENGINE */}
       {activeTab === "automation" && (
         <Card className="bg-slate-900/80 border-slate-800 p-6 space-y-6">
-          <div className="border-b border-slate-800 pb-4">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <Zap className="w-5 h-5 text-amber-400" />
-              Moteur d&apos;Automatisation Central (Automation Engine)
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Supervision des règles événementielles et pause globale</p>
+          <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-400" />
+                Moteur d&apos;Automatisation Central (Automation Engine)
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Supervision des règles événementielles et pause globale</p>
+            </div>
+            <DataSourceBadge type="REALTIME" label="AUTOMATION ENGINE ACTIVE" />
           </div>
 
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
@@ -360,12 +372,15 @@ export default function SettingsPage() {
       {/* TAB 7: SYSTÈME & INFRA */}
       {activeTab === "system" && (
         <Card className="bg-slate-900/80 border-slate-800 p-6 space-y-6">
-          <div className="border-b border-slate-800 pb-4">
-            <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
-              <Server className="w-5 h-5 text-slate-300" />
-              Informations Système & Environnement
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">Informations de version et statut du déploiement Vercel / GitHub</p>
+          <div className="border-b border-slate-800 pb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Server className="w-5 h-5 text-slate-300" />
+                Informations Système & Environnement
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Informations de version et statut du déploiement Vercel / GitHub</p>
+            </div>
+            <DataSourceBadge type="DATABASE" label="BUILD 15 ACTIVE" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">

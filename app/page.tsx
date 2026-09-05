@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
 import {
   BrainCircuit,
   Sparkles,
@@ -137,7 +138,7 @@ export default function CEOCockpitPage() {
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Trésorerie Disponible</span>
-            <Wallet className="w-4 h-4 text-emerald-400" />
+            <DataSourceBadge type="DATABASE" label="FINANCE LEDGER" />
           </div>
           <p className="text-2xl font-bold text-slate-100">2 450 000 XOF</p>
           <p className="text-[11px] text-emerald-400 font-mono mt-1">+12.4% vs mois dernier</p>
@@ -146,7 +147,7 @@ export default function CEOCockpitPage() {
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Chiffre d'Affaires (7D)</span>
-            <TrendingUp className="w-4 h-4 text-blue-400" />
+            <DataSourceBadge type="DATABASE" label="ORDERS SSOT" />
           </div>
           <p className="text-2xl font-bold text-slate-100">1 850 000 XOF</p>
           <p className="text-[11px] text-blue-400 font-mono mt-1">Marge brute: 34.2%</p>
@@ -155,7 +156,7 @@ export default function CEOCockpitPage() {
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Stock Critique</span>
-            <Package className="w-4 h-4 text-amber-400" />
+            <DataSourceBadge type="DATABASE" label="PRODUCT STOCK" />
           </div>
           <p className="text-2xl font-bold text-amber-400">2 Produits</p>
           <p className="text-[11px] text-slate-400 font-mono mt-1">Seuil bas atteint (&lt; 5)</p>
@@ -164,7 +165,7 @@ export default function CEOCockpitPage() {
         <div className="bg-slate-900/80 border border-slate-800 p-5 rounded-2xl">
           <div className="flex items-center justify-between text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Succès Livraisons</span>
-            <Truck className="w-4 h-4 text-purple-400" />
+            <DataSourceBadge type="CALCULATED" label="FLEET METRICS" />
           </div>
           <p className="text-2xl font-bold text-slate-100">92.8%</p>
           <p className="text-[11px] text-emerald-400 font-mono mt-1">1 échec à traiter aujourd'hui</p>

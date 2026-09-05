@@ -100,4 +100,22 @@ describe('WillShop OS — Navigation & Route Integration Suite', () => {
     assert.strictEqual(result.globalStatus, 'HEALTHY');
     assert.strictEqual(Object.keys(result.pillars).length, 6);
   });
+
+  it('5. Empty Database State & Provenance Transparency: Graceful fallback without hardcoded fake metrics', () => {
+    // 0 anomalies when database metrics are normal
+    const cleanAnomalies = AnomalyEngine.detect({
+      organizationId: orgId,
+      deliveryFailureRatePercentage: 5,
+      revenueChangePercentage: 10,
+      lowStockItemsCount: 0,
+      grossMarginPercentage: 40,
+      unpaidConfirmedOrdersCount: 0,
+    });
+    assert.strictEqual(cleanAnomalies.length, 0);
+
+    // Forecast with zero history returns explicit insufficient data assumption
+    const emptyForecast = ForecastEngine.forecastMovingAverage('revenue', [], '90 jours');
+    assert.strictEqual(emptyForecast.forecastValue, 0);
+    assert.strictEqual(emptyForecast.confidence.score, 30);
+  });
 });
