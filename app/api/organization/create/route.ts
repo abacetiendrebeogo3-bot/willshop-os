@@ -2,27 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@/src/infrastructure/supabase/server';
 
-const DEFAULT_SUPABASE_URL = 'https://stbzctncpvgqdpybcrmg.supabase.co';
-const DEFAULT_SERVICE_ROLE_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0YnpjdG5jcHZncWRweWJjcm1nIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODYwMDMyNiwiZXhwIjoyMTA0MTc2MzI2fQ.IE2MN4HMLAOseaIs39ca1plt5c4TiN6FM-b3ELE6zSc';
-
 export async function POST(request: NextRequest) {
   try {
-    const supabaseUrl =
-      process.env.NEXT_PUBLIC_SUPABASE_URL && !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')
-        ? process.env.NEXT_PUBLIC_SUPABASE_URL
-        : DEFAULT_SUPABASE_URL;
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const serviceKey =
-      process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY.length > 20
-        ? process.env.SUPABASE_SERVICE_ROLE_KEY
-        : DEFAULT_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceKey) {
+      console.error('[Org API Error] NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variable is missing');
+      return NextResponse.json(
+        {
+          error:
+            'Configuration serveur incomplète : SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_URL non configurée dans les variables d\'environnement Vercel.',
+        },
+        { status: 500 }
+      );
+    }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
     });
 
-    // 1. Authenticate user via Cookies or Authorization Bearer Header
+    // 1. Authenticate user from Cookies or Authorization Bearer Header
     let user = null;
 
     // Method A: Check Cookie Auth
@@ -53,9 +53,33 @@ export async function POST(request: NextRequest) {
     if (!user) {
       console.error('[Org API Auth Error] User not authenticated via Cookies or Bearer token');
       return NextResponse.json(
-        { error: 'Session non authentifiée. Veuillez vous déconnecter et vous reconnecter.' },
+        { error: 'Session d\'authentification invalide ou expirée. Veuillez vous déconnecter et vous reconnecter.' },
         { status: 401 }
       );
+    }
+
+    // 2. Check if user already owns or belongs to an organization (Idempotency / Existing Org Handling)
+    const { data: existingRoles } = await supabaseAdmin
+      .from('user_organization_roles')
+      .select('organization_id, role')
+      .eq('user_id', user.id)
+      .is('deleted_at', null);
+
+    if (existingRoles && existingRoles.length > 0) {
+      const existingOrgId = existingRoles[0].organization_id;
+      const { data: existingOrg } = await supabaseAdmin
+        .from('organizations')
+        .select('*')
+        .eq('id', existingOrgId)
+        .single();
+
+      if (existingOrg) {
+        return NextResponse.json({
+          success: true,
+          existing: true,
+          organization: existingOrg,
+        });
+      }
     }
 
     let body: any = {};
@@ -80,7 +104,7 @@ export async function POST(request: NextRequest) {
 
     const slug = `${baseSlug || 'org'}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    // 2. Insert Organization
+    // 3. Insert Organization
     const { data: org, error: orgError } = await supabaseAdmin
       .from('organizations')
       .insert({
@@ -101,19 +125,15 @@ export async function POST(request: NextRequest) {
       .select('*')
       .single();
 
-    if (orgError) {
-      console.error('[Org Creation Error]', orgError);
+    if (orgError || !org) {
+      console.error('[Org Creation DB Error]', orgError);
       return NextResponse.json(
-        { error: `Erreur base de données lors de la création d'entreprise: ${orgError.message}` },
+        { error: `Erreur base de données Supabase lors de la création d'entreprise: ${orgError?.message || 'Inconnue'}` },
         { status: 500 }
       );
     }
 
-    if (!org) {
-      return NextResponse.json({ error: "Impossible d'enregistrer l'organisation." }, { status: 500 });
-    }
-
-    // 3. Insert User Role as OWNER
+    // 4. Insert User Role as OWNER (with rollback cleanup if role assignment fails)
     const { error: roleError } = await supabaseAdmin
       .from('user_organization_roles')
       .insert({
@@ -125,14 +145,16 @@ export async function POST(request: NextRequest) {
       });
 
     if (roleError) {
-      console.error('[Role Assignment Error]', roleError);
+      console.error('[Role Assignment Error - Rolling back Org]', roleError);
+      // Clean up orphaned organization
+      await supabaseAdmin.from('organizations').delete().eq('id', org.id);
       return NextResponse.json(
-        { error: `Erreur d'assignation du rôle d'administration (OWNER): ${roleError.message}` },
+        { error: `Erreur d'assignation du rôle OWNER (${roleError.message}). Création annulée.` },
         { status: 500 }
       );
     }
 
-    // 4. Create default financial account (Caisse Principale)
+    // 5. Create default financial account (Caisse Principale)
     const { error: finError } = await supabaseAdmin.from('financial_accounts').insert({
       organization_id: org.id,
       name: 'Caisse Principale',
@@ -149,6 +171,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      existing: false,
       organization: org,
     });
   } catch (error: any) {
