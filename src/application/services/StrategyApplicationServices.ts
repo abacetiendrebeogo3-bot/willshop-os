@@ -207,6 +207,17 @@ export class StrategyApplicationService {
     return updated;
   }
 
+  public async updateGoalProgress(goalId: string, currentValue: number, orgId: string): Promise<StrategicGoal> {
+    const goal = await this.deps.goalRepo.findGoalById(orgId, goalId);
+    if (!goal) throw new Error(`Objectif '${goalId}' introuvable.`);
+    goal.currentValue = currentValue;
+    const trajectory = TrajectoryEngine.evaluateTrajectory(goal);
+    goal.status = trajectory.status;
+    goal.forecastValue = trajectory.forecast;
+    goal.updatedAt = new Date();
+    return this.deps.goalRepo.updateGoal(goal);
+  }
+
   public async getGoalProgress(orgId: string, goalId: string): Promise<GoalProgressMetrics> {
     const goal = await this.deps.goalRepo.findGoalById(orgId, goalId);
     if (!goal) throw new Error(`Objectif '${goalId}' introuvable.`);

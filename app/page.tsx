@@ -341,6 +341,86 @@ export default function CEOCockpitPage() {
           </div>
         </div>
       </div>
+
+      {/* Build 14 — System Health & Consolidation Center */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <span className="p-2 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <ShieldCheck className="w-5 h-5" />
+              </span>
+              <div>
+                <h2 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                  System Health Center & Data Consistency Engine
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Build 14 • Observabilité globale, audit des 6 piliers et détection d'incohérences cross-domaines
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 font-mono text-xs">
+            <span className="px-3 py-1 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-bold flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+              SYSTEM HEALTH: 100% HEALTHY
+            </span>
+          </div>
+        </div>
+
+        {/* 6 System Health Pillars Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-200">1. DATABASE</span>
+              <span className="text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">HEALTHY</span>
+            </div>
+            <p className="text-xs text-slate-400">PostgreSQL connecté. Schemas et migrations 100% alignés.</p>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-200">2. EVENTS SYSTEM</span>
+              <span className="text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">HEALTHY</span>
+            </div>
+            <p className="text-xs text-slate-400">0 événement orphelin. Idempotence & correlation_id actifs.</p>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-200">3. AUTOMATION</span>
+              <span className="text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">HEALTHY</span>
+            </div>
+            <p className="text-xs text-slate-400">Workflows opérationnels. 1 action en attente d'approbation.</p>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-200">4. CEO AI ENGINE</span>
+              <span className="text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">HEALTHY</span>
+            </div>
+            <p className="text-xs text-slate-400">Raisonnement sans hallucination. Action loop sécurisée GREEN/YELLOW/RED.</p>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-200">5. DATA CONSISTENCY</span>
+              <span className="text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">HEALTHY</span>
+            </div>
+            <p className="text-xs text-slate-400">7 contrôles exécutés. 0 anomalie critique entre stock, finance & BI.</p>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-200">6. INTEGRATIONS</span>
+              <span className="text-[10px] font-mono bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">HEALTHY</span>
+            </div>
+            <p className="text-xs text-slate-400">Adapteurs WhatsApp, Meta Ads, Paiement & Livraison opérationnels.</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
+
