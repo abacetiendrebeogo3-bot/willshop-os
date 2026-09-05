@@ -371,3 +371,60 @@ export class MarkOutForDeliveryService {
     return order;
   }
 }
+
+export class ReturnOrderService {
+  constructor(
+    private readonly orderRepo: IOrderRepository,
+    private readonly stockRepo: IStockRepository,
+    private readonly auditRepo: IAuditRepository,
+    private readonly eventRepo: IEventRepository
+  ) {}
+
+  async execute(orderId: string, orgId: string, itemsIntact = true, reason = 'Customer Return', actorId?: string): Promise<Order> {
+    const orderData = await this.orderRepo.findById(orderId, orgId);
+    if (!orderData) throw new NotFoundError(`Order ${orderId} not found`);
+
+    const { order, items } = orderData;
+    if (order.status === 'RETURNED') return order;
+
+    OrderStateMachine.validateTransition(order.status, 'RETURNED');
+
+    if (itemsIntact) {
+      const sortedItems = [...items].sort((a, b) => a.productId.localeCompare(b.productId));
+      for (const item of sortedItems) {
+        await this.stockRepo.recordMovement({
+          organizationId: orgId,
+          productId: item.productId,
+          movementType: 'RETURN',
+          direction: 'IN',
+          quantity: item.quantity,
+          referenceType: 'ORDER',
+          referenceId: orderId,
+          reason: `Intact Return: ${reason}`,
+          createdBy: actorId,
+        });
+      }
+    }
+
+    order.status = 'RETURNED';
+    order.updatedAt = new Date();
+
+    await this.auditRepo.log({
+      organizationId: orgId,
+      actorId,
+      action: 'order.return',
+      targetEntity: 'orders',
+      targetId: orderId,
+      reason,
+    });
+
+    await this.eventRepo.recordEvent({
+      organizationId: orgId,
+      eventType: 'order.returned',
+      payload: { orderId, itemsIntact, reason },
+      actorId,
+    });
+
+    return order;
+  }
+}
