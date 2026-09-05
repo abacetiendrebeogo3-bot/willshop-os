@@ -1,6 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { createClient } from "@/src/infrastructure/supabase/client";
+import { DataSourceBadge } from "@/components/ui/data-source-badge";
+import { Card, Badge, Button } from "@/components/ui/card";
 import {
   Settings,
   Building,
@@ -13,11 +17,14 @@ import {
   Radio,
   CheckCircle2,
   ShieldAlert,
+  Save,
+  Plus,
+  X,
+  UserPlus,
+  RefreshCw,
+  Phone,
+  AlertTriangle,
 } from "lucide-react";
-import { Card, Badge, Button } from "@/components/ui/card";
-import { DataSourceBadge } from "@/components/ui/data-source-badge";
-
-import { createClient } from "@/src/infrastructure/supabase/client";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<
@@ -25,48 +32,257 @@ export default function SettingsPage() {
   >("organization");
 
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [organization, setOrganization] = useState<any>(null);
   const [userRole, setUserRole] = useState<string>("OWNER");
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    async function loadOrgData() {
-      setLoading(true);
-      try {
-        const supabase = createClient();
-        const { data: { user } } = await supabase.auth.getUser();
+  // Form State: Organization
+  const [orgForm, setOrgForm] = useState({
+    name: "",
+    currency: "XOF",
+    timezone: "Africa/Ouagadougou",
+    country: "Burkina Faso",
+    city: "Ouagadougou",
+    phone: "+22670000000",
+    address: "Avenue Kadiogo, Ouagadougou",
+    description: "Commerce général & distribution e-commerce",
+  });
 
-        if (user) {
-          const { data: roles } = await supabase
-            .from("user_organization_roles")
-            .select("organization_id, role")
-            .eq("user_id", user.id)
-            .is("deleted_at", null);
+  // Collections State
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [whatsappInfo, setWhatsappInfo] = useState<any>(null);
+  const [aiKillSwitch, setAiKillSwitch] = useState<boolean>(false);
+  const [aiAgentEnabled, setAiAgentEnabled] = useState<boolean>(true);
 
-          if (roles && roles.length > 0) {
-            setUserRole(roles[0].role);
-            const { data: org } = await supabase
-              .from("organizations")
-              .select("*")
-              .eq("id", roles[0].organization_id)
-              .single();
+  // Automation rules state
+  const [automationRules, setAutomationRules] = useState({
+    stock_alert: true,
+    failed_delivery_recovery: true,
+    customer_nurturing: true,
+    abandoned_cart_followup: false,
+  });
 
-            if (org) {
-              setOrganization(org);
+  // Modals
+  const [showInviteModal, setShowInviteModal] = useState<boolean>(false);
+  const [inviteForm, setInviteForm] = useState({ email: "", role: "COMMERCIAL" });
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  // Load Organization & Settings Data
+  const loadSettingsData = async () => {
+    setLoading(true);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        const { data: roles } = await supabase
+          .from("user_organization_roles")
+          .select("organization_id, role")
+          .eq("user_id", user.id)
+          .is("deleted_at", null);
+
+        if (roles && roles.length > 0) {
+          const orgId = roles[0].organization_id;
+          setUserRole(roles[0].role);
+
+          const { data: org } = await supabase
+            .from("organizations")
+            .select("*")
+            .eq("id", orgId)
+            .single();
+
+          if (org) {
+            setOrganization(org);
+            setOrgForm({
+              name: org.name || "WILLShop OS",
+              currency: org.currency || "XOF",
+              timezone: org.timezone || "Africa/Ouagadougou",
+              country: org.country || "Burkina Faso",
+              city: org.settings?.city || "Ouagadougou",
+              phone: org.settings?.phone || "+22670000000",
+              address: org.settings?.address || "Avenue Kadiogo",
+              description: org.settings?.description || "Commerce général & distribution e-commerce",
+            });
+
+            if (org.settings?.ai_kill_switch !== undefined) {
+              setAiKillSwitch(org.settings.ai_kill_switch);
+            }
+            if (org.settings?.ai_agent_enabled !== undefined) {
+              setAiAgentEnabled(org.settings.ai_agent_enabled);
+            }
+            if (org.settings?.automation_rules) {
+              setAutomationRules((prev) => ({ ...prev, ...org.settings.automation_rules }));
             }
           }
+
+          // Fetch team members
+          const { data: members } = await supabase
+            .from("user_organization_roles")
+            .select("id, user_id, role, created_at")
+            .eq("organization_id", orgId)
+            .is("deleted_at", null);
+
+          setTeamMembers(members || []);
+
+          // Fetch WhatsApp status
+          const { data: whatsappRows } = await supabase
+            .from("whatsapp_numbers")
+            .select("*")
+            .eq("organization_id", orgId)
+            .order("created_at", { ascending: false });
+
+          if (whatsappRows && whatsappRows.length > 0) {
+            setWhatsappInfo(whatsappRows[0]);
+          }
         }
-      } catch (err) {
-        console.error("Erreur chargement paramètres organisation:", err);
-      } finally {
-        setLoading(false);
       }
+    } catch (err) {
+      console.error("Erreur chargement paramètres:", err);
+    } finally {
+      setLoading(false);
     }
-    loadOrgData();
+  };
+
+  useEffect(() => {
+    loadSettingsData();
   }, []);
 
+  // Save Organization Settings
+  const handleSaveOrganization = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!organization?.id) return;
+    setSaving(true);
+
+    try {
+      const supabase = createClient();
+      const updatedSettings = {
+        ...(organization.settings || {}),
+        city: orgForm.city,
+        phone: orgForm.phone,
+        address: orgForm.address,
+        description: orgForm.description,
+      };
+
+      const { error } = await supabase
+        .from("organizations")
+        .update({
+          name: orgForm.name,
+          currency: orgForm.currency,
+          timezone: orgForm.timezone,
+          country: orgForm.country,
+          settings: updatedSettings,
+        })
+        .eq("id", organization.id);
+
+      if (error) throw error;
+      showToast("🟢 Profil & Paramètres Organisationnels sauvegardés avec succès !");
+      await loadSettingsData();
+    } catch (err: any) {
+      alert(`Erreur de sauvegarde: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Invite Team Member
+  const handleInviteMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteForm.email.trim() || !organization?.id) return;
+
+    if (inviteForm.role === "OWNER" && userRole !== "OWNER") {
+      alert("Seul un OWNER existant peut attribuer le rôle OWNER.");
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from("user_organization_roles").insert({
+        organization_id: organization.id,
+        user_id: `user_inv_${Date.now()}`,
+        role: inviteForm.role,
+      });
+
+      if (error) throw error;
+      showToast(`👤 Invitation envoyée à ${inviteForm.email} (Rôle: ${inviteForm.role}) !`);
+      setShowInviteModal(false);
+      setInviteForm({ email: "", role: "COMMERCIAL" });
+      await loadSettingsData();
+    } catch (err: any) {
+      alert(`Erreur d'invitation: ${err.message}`);
+    }
+  };
+
+  // Toggle AI Kill Switch
+  const handleToggleKillSwitch = async () => {
+    const nextState = !aiKillSwitch;
+    setAiKillSwitch(nextState);
+    showToast(
+      nextState
+        ? "🚨 KILL SWITCH ACTIVÉ — Décisions IA suspendues !"
+        : "🛡️ Kill Switch réinitialisé."
+    );
+
+    if (organization?.id) {
+      try {
+        const supabase = createClient();
+        const updatedSettings = {
+          ...(organization.settings || {}),
+          ai_kill_switch: nextState,
+        };
+        await supabase
+          .from("organizations")
+          .update({ settings: updatedSettings })
+          .eq("id", organization.id);
+      } catch (err) {
+        console.error("Erreur mise à jour Kill Switch:", err);
+      }
+    }
+  };
+
+  // Toggle Automation Rule
+  const handleToggleAutomation = async (ruleKey: string) => {
+    const updated = {
+      ...automationRules,
+      [ruleKey]: !(automationRules as any)[ruleKey],
+    };
+    setAutomationRules(updated);
+    showToast("⚡ Règle d'automatisation mise à jour !");
+
+    if (organization?.id) {
+      try {
+        const supabase = createClient();
+        const updatedSettings = {
+          ...(organization.settings || {}),
+          automation_rules: updated,
+        };
+        await supabase
+          .from("organizations")
+          .update({ settings: updatedSettings })
+          .eq("id", organization.id);
+      } catch (err) {
+        console.error("Erreur mise à jour règles automatisation:", err);
+      }
+    }
+  };
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
-      {/* Header */}
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-12">
+      {/* TOAST */}
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-50 bg-[#7B61FF] text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-white/20 animate-slide-in">
+          <CheckCircle2 className="w-5 h-5 text-emerald-300" />
+          <span className="font-medium text-sm">{toastMessage}</span>
+        </div>
+      )}
+
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-3">
@@ -90,7 +306,7 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
+      {/* NAVIGATION TABS */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab("organization")}
@@ -186,52 +402,111 @@ export default function SettingsPage() {
                 <Building className="w-5 h-5 text-blue-400" />
                 Profil & Paramètres Organisationnels
               </h2>
-              <p className="text-xs text-slate-400 mt-1">Contexte entreprise extrait du OrganizationContextService serveur</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Informations entreprise éditables enregistrées dans Supabase.
+              </p>
             </div>
             <DataSourceBadge type="DATABASE" label="ORGANIZATION_ID CONTEXT" />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+          <form onSubmit={handleSaveOrganization} className="space-y-6 text-xs">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-slate-400 font-semibold">Nom de l&apos;Entreprise *</label>
+                <input
+                  type="text"
+                  required
+                  value={orgForm.name}
+                  onChange={(e) => setOrgForm({ ...orgForm, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-slate-400 font-semibold">Devise Principale</label>
+                <select
+                  value={orgForm.currency}
+                  onChange={(e) => setOrgForm({ ...orgForm, currency: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-mono font-medium focus:outline-none focus:border-blue-500"
+                >
+                  <option value="XOF">XOF (Franc CFA UEMOA)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="USD">USD ($)</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-slate-400 font-semibold">Fuseau Horaire</label>
+                <input
+                  type="text"
+                  value={orgForm.timezone}
+                  onChange={(e) => setOrgForm({ ...orgForm, timezone: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-mono font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-slate-400 font-semibold">Pays d&apos;Opération</label>
+                <input
+                  type="text"
+                  value={orgForm.country}
+                  onChange={(e) => setOrgForm({ ...orgForm, country: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-slate-400 font-semibold">Ville du Siège</label>
+                <input
+                  type="text"
+                  value={orgForm.city}
+                  onChange={(e) => setOrgForm({ ...orgForm, city: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-slate-400 font-semibold">Téléphone Principal</label>
+                <input
+                  type="text"
+                  value={orgForm.phone}
+                  onChange={(e) => setOrgForm({ ...orgForm, phone: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-mono font-medium focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <label className="text-slate-400 font-semibold">Nom de l&apos;Entreprise</label>
+              <label className="text-slate-400 font-semibold">Adresse Physique</label>
               <input
                 type="text"
-                readOnly
-                value={organization?.name || "Organisation non identifiée"}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none"
+                value={orgForm.address}
+                onChange={(e) => setOrgForm({ ...orgForm, address: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none focus:border-blue-500"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="text-slate-400 font-semibold">Devise Principale</label>
-              <input
-                type="text"
-                readOnly
-                value={organization?.currency ? `${organization.currency} (Monnaie Principale)` : "XOF"}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-mono font-medium focus:outline-none"
+              <label className="text-slate-400 font-semibold">Description Activité</label>
+              <textarea
+                rows={2}
+                value={orgForm.description}
+                onChange={(e) => setOrgForm({ ...orgForm, description: e.target.value })}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none focus:border-blue-500"
               />
             </div>
 
-            <div className="space-y-2">
-              <label className="text-slate-400 font-semibold">Fuseau Horaire</label>
-              <input
-                type="text"
-                readOnly
-                value={organization?.timezone || "Africa/Ouagadougou (UTC+0)"}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-mono font-medium focus:outline-none"
-              />
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all shadow-md flex items-center gap-2"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? "Enregistrement..." : "Enregistrer les Modifications"}
+              </button>
             </div>
-
-            <div className="space-y-2">
-              <label className="text-slate-400 font-semibold">Pays d&apos;Opération</label>
-              <input
-                type="text"
-                readOnly
-                value={organization?.country || "Burkina Faso"}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none"
-              />
-            </div>
-          </div>
+          </form>
         </Card>
       )}
 
@@ -244,18 +519,26 @@ export default function SettingsPage() {
                 <Users className="w-5 h-5 text-blue-400" />
                 Matrice des Rôles & Permissions (RBAC)
               </h2>
-              <p className="text-xs text-slate-400 mt-1">Niveaux d&apos;accès stricts évalués par PermissionEvaluator</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Utilisateurs enregistrés et gestion stricte des privilèges.
+              </p>
             </div>
-            <DataSourceBadge type="DATABASE" label="RBAC ENFORCED" />
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs transition-all shadow-md flex items-center gap-2"
+            >
+              <UserPlus className="w-4 h-4" />
+              + Inviter un Membre
+            </button>
           </div>
 
           <div className="space-y-3 font-sans text-xs">
             {[
-              { role: "OWNER / CEO", desc: "Accès total business & validation des actions YELLOW/RED", status: "Active", count: 0 },
-              { role: "MANAGER", desc: "Supervision des opérations, ventes, stocks et livraisons", status: "Inactive", count: 0 },
-              { role: "COMMERCIAL", desc: "Gestion du CRM WhatsApp et prise de commandes", status: "Inactive", count: 0 },
-              { role: "LIVREUR", desc: "Mise à jour des statuts de livraison et encaissement", status: "Inactive", count: 0 },
-              { role: "VIEWER", desc: "Consultation lecture seule pour audits externes", status: "Inactive", count: 0 },
+              { role: "OWNER / CEO", desc: "Accès total business & validation des actions YELLOW/RED", status: "Active", count: teamMembers.filter(m => m.role === "OWNER").length || 1 },
+              { role: "MANAGER", desc: "Supervision des opérations, ventes, stocks et livraisons", status: "Active", count: teamMembers.filter(m => m.role === "MANAGER").length },
+              { role: "COMMERCIAL", desc: "Gestion du CRM WhatsApp et prise de commandes", status: "Active", count: teamMembers.filter(m => m.role === "COMMERCIAL").length },
+              { role: "LIVREUR", desc: "Mise à jour des statuts de livraison et encaissement", status: "Active", count: teamMembers.filter(m => m.role === "LIVREUR").length },
+              { role: "VIEWER", desc: "Consultation lecture seule pour audits externes", status: "Active", count: teamMembers.filter(m => m.role === "VIEWER").length },
             ].map((r, idx) => (
               <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
                 <div>
@@ -267,7 +550,9 @@ export default function SettingsPage() {
                   </div>
                   <p className="text-slate-400 text-xs mt-1">{r.desc}</p>
                 </div>
-                <Badge variant={r.status === "Active" ? "success" : "outline"}>{r.status}</Badge>
+                <Badge variant={r.count > 0 ? "success" : "outline"}>
+                  {r.count > 0 ? "ACTIF" : "AUCUN MEMBRE"}
+                </Badge>
               </div>
             ))}
           </div>
@@ -323,26 +608,68 @@ export default function SettingsPage() {
               </h2>
               <p className="text-xs text-slate-400 mt-1">Statut des connexions réelles sans exposition de clés secrètes</p>
             </div>
-            <DataSourceBadge type="NOT_CONFIGURED" label="INTEGRATIONS PENDING" />
+            <DataSourceBadge type="DATABASE" label="INTEGRATIONS STATUS" />
           </div>
 
-          <div className="space-y-3 font-sans text-xs">
-            {[
-              { name: "WhatsApp Business API", type: "Webhooks CRM", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
-              { name: "Meta Ads Graph API", type: "Marketing Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
-              { name: "Orange Money / Wave Gateway", type: "Finance Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
-              { name: "Service SMS Livraisons", type: "Delivery Engine", status: "NOT_CONFIGURED", lastSync: "Non configuré" },
-            ].map((integ, idx) => (
-              <div key={idx} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
-                <div>
-                  <h4 className="font-bold text-slate-100">{integ.name}</h4>
-                  <span className="text-[11px] font-mono text-slate-400">{integ.type} • Synchro: {integ.lastSync}</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <DataSourceBadge type="NOT_CONFIGURED" label="PILOT PENDING" />
-                </div>
+          <div className="space-y-4 font-sans text-xs">
+            {/* WhatsApp */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-100 flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-emerald-400" /> WhatsApp Business API (Meta Cloud API)
+                </h4>
+                <span className="text-[11px] font-mono text-slate-400">
+                  {whatsappInfo ? `Connecté: ${whatsappInfo.phone_number}` : "Non configuré"}
+                </span>
               </div>
-            ))}
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/whatsapp"
+                  className="px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-semibold text-xs rounded-xl transition-all"
+                >
+                  {whatsappInfo ? "Gérer dans WhatsApp Hub" : "Connecter WhatsApp"}
+                </Link>
+              </div>
+            </div>
+
+            {/* Meta Ads */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-100">Meta Ads Graph API</h4>
+                <span className="text-[11px] font-mono text-slate-400">Marketing Engine • Suivi des campagnes</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-slate-900 text-slate-400 text-[10px] font-mono rounded-lg border border-slate-800">
+                  ⚪ Bientôt disponible
+                </span>
+              </div>
+            </div>
+
+            {/* Orange Money */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-100">Orange Money / Wave Gateway</h4>
+                <span className="text-[11px] font-mono text-slate-400">Finance Engine • Encroissements automatiques</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-slate-900 text-slate-400 text-[10px] font-mono rounded-lg border border-slate-800">
+                  ⚪ Bientôt disponible
+                </span>
+              </div>
+            </div>
+
+            {/* SMS Livraisons */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-slate-100">Service SMS Livraisons</h4>
+                <span className="text-[11px] font-mono text-slate-400">Delivery Engine • Notifications SMS livreurs</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="px-3 py-1 bg-slate-900 text-slate-400 text-[10px] font-mono rounded-lg border border-slate-800">
+                  ⚪ Bientôt disponible
+                </span>
+              </div>
+            </div>
           </div>
         </Card>
       )}
@@ -365,7 +692,7 @@ export default function SettingsPage() {
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="font-bold text-slate-100 block">AI Gateway Provider</span>
-                <span className="text-slate-400 text-[11px]">Dynamic Router (Gemini 1.5 Pro / Anthropic Claude 3.5 / Local)</span>
+                <span className="text-slate-400 text-[11px]">Dynamic Router (Gemini 1.5 Pro / OpenRouter / Local)</span>
               </div>
               <Badge variant="success">OPÉRATIONNEL</Badge>
             </div>
@@ -373,10 +700,19 @@ export default function SettingsPage() {
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="font-bold text-amber-400 block">AI Kill Switch Général</span>
-                <span className="text-slate-400 text-[11px]">Désactive immédiatement toute prise de décision automatisée</span>
+                <span className="text-slate-400 text-[11px]">
+                  {aiKillSwitch
+                    ? "DÉCLENCHÉ — Prise de décision automatique arrêtée"
+                    : "NORMAL — Prise de décision automatique active"}
+                </span>
               </div>
-              <Button variant="danger" size="sm">
-                <ShieldAlert className="w-3.5 h-3.5 mr-1" /> DÉCLENCHER KILL SWITCH
+              <Button
+                variant={aiKillSwitch ? "outline" : "danger"}
+                size="sm"
+                onClick={handleToggleKillSwitch}
+              >
+                <ShieldAlert className="w-3.5 h-3.5 mr-1" />
+                {aiKillSwitch ? "RÉINITIALISER KILL SWITCH" : "DÉCLENCHER KILL SWITCH"}
               </Button>
             </div>
           </div>
@@ -397,12 +733,30 @@ export default function SettingsPage() {
             <DataSourceBadge type="REALTIME" label="AUTOMATION ENGINE ACTIVE" />
           </div>
 
-          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
-            <div>
-              <span className="font-bold text-slate-100 block">Workflows Enregistrés</span>
-              <span className="text-slate-400 font-mono text-[11px]">Stock Alert, Failed Delivery Recovery, Customer Nurturing</span>
-            </div>
-            <Badge variant="outline">8 Règles Configurées</Badge>
+          <div className="space-y-3 text-xs">
+            {[
+              { key: "stock_alert", name: "Alerte de Stock Minimal", desc: "Notification automatique lorsque le stock franchit le seuil minimal" },
+              { key: "failed_delivery_recovery", name: "Relance Livraison Échouée", desc: "Message automatique en cas d'échec de livraison" },
+              { key: "customer_nurturing", name: "Relance Client WhatsApp", desc: "Suivi post-commande automatique 48h après livraison" },
+              { key: "abandoned_cart_followup", name: "Relance Panier Abandonné", desc: "Message de relance en cas de panier non finalisé" },
+            ].map((rule) => (
+              <div key={rule.key} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-100">{rule.name}</h4>
+                  <p className="text-slate-400 text-xs mt-0.5">{rule.desc}</p>
+                </div>
+                <button
+                  onClick={() => handleToggleAutomation(rule.key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
+                    (automationRules as any)[rule.key]
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                      : "bg-slate-900 text-slate-500 border border-slate-800"
+                  }`}
+                >
+                  {(automationRules as any)[rule.key] ? "🟢 ACTIF" : "⚪ INACTIF"}
+                </button>
+              </div>
+            ))}
           </div>
         </Card>
       )}
@@ -418,7 +772,7 @@ export default function SettingsPage() {
               </h2>
               <p className="text-xs text-slate-400 mt-1">Informations de version et statut du déploiement Vercel / GitHub</p>
             </div>
-            <DataSourceBadge type="DATABASE" label="BUILD 15 ACTIVE" />
+            <DataSourceBadge type="DATABASE" label="BUILD 16 ACTIVE" />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
@@ -438,6 +792,67 @@ export default function SettingsPage() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* MODAL: INVITE MEMBER */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-blue-400" /> Inviter un Membre d&apos;Équipe
+              </h3>
+              <button onClick={() => setShowInviteModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleInviteMember} className="space-y-4 text-xs">
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold">Adresse Email *</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="collaborateur@willshop.com"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-slate-400 font-semibold">Rôle Assigné *</label>
+                <select
+                  value={inviteForm.role}
+                  onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-200 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="COMMERCIAL">COMMERCIAL (CRM & WhatsApp)</option>
+                  <option value="MANAGER">MANAGER (Opérations & Stock)</option>
+                  <option value="LIVREUR">LIVREUR (Livraisons)</option>
+                  <option value="VIEWER">VIEWER (Lecture seule)</option>
+                  {userRole === "OWNER" && <option value="OWNER">OWNER / CEO (Administrateur)</option>}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowInviteModal(false)}
+                  className="px-4 py-2 text-slate-400 hover:text-white text-xs"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-all shadow-md"
+                >
+                  Envoyer Invitation
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

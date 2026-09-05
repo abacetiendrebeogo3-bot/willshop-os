@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { createClient } from "@/src/infrastructure/supabase/client";
 import { DataSourceBadge } from "@/components/ui/data-source-badge";
 import {
@@ -616,6 +617,14 @@ export default function SalesCRMPage() {
             type={conversations.length > 0 ? "DATABASE" : "EMPTY_STATE"}
             label="WHATSAPP CRM"
           />
+          <Link
+            href="/whatsapp"
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-sm font-medium rounded-xl transition-all"
+          >
+            <MessageSquare className="w-4 h-4" />
+            💬 WhatsApp & Agent IA Hub
+          </Link>
+
           <button
             onClick={() => setShowConnectModal(true)}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${

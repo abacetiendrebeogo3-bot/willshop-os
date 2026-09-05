@@ -25,6 +25,7 @@ import { useSidebar } from "@/src/context/SidebarContext";
 const NAV_ITEMS = [
   { name: "CEO Cockpit", href: "/ceo", icon: LayoutDashboard },
   { name: "Ventes & CRM", href: "/sales", icon: MessageSquare, badge: "Live" },
+  { name: "WhatsApp & Agent IA", href: "/whatsapp", icon: Zap, badge: "AI" },
   { name: "Produits & Stock", href: "/operations/products", icon: Package, badge: "SSOT" },
   { name: "Commandes", href: "/orders", icon: ShoppingCart },
   { name: "Livraisons", href: "/delivery", icon: Truck },
