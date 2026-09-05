@@ -17,10 +17,52 @@ import {
 import { Card, Badge, Button } from "@/components/ui/card";
 import { DataSourceBadge } from "@/components/ui/data-source-badge";
 
+import { createClient } from "@/src/infrastructure/supabase/client";
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<
     "organization" | "users_roles" | "security" | "integrations" | "ai_guardrails" | "automation" | "system"
   >("organization");
+
+  const [loading, setLoading] = useState(true);
+  const [organization, setOrganization] = useState<any>(null);
+  const [userRole, setUserRole] = useState<string>("OWNER");
+
+  React.useEffect(() => {
+    async function loadOrgData() {
+      setLoading(true);
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user) {
+          const { data: roles } = await supabase
+            .from("user_organization_roles")
+            .select("organization_id, role")
+            .eq("user_id", user.id)
+            .is("deleted_at", null);
+
+          if (roles && roles.length > 0) {
+            setUserRole(roles[0].role);
+            const { data: org } = await supabase
+              .from("organizations")
+              .select("*")
+              .eq("id", roles[0].organization_id)
+              .single();
+
+            if (org) {
+              setOrganization(org);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erreur chargement paramètres organisation:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadOrgData();
+  }, []);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
@@ -155,7 +197,7 @@ export default function SettingsPage() {
               <input
                 type="text"
                 readOnly
-                value="WillShop Burkina Faso"
+                value={organization?.name || "Organisation non identifiée"}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none"
               />
             </div>
@@ -165,7 +207,7 @@ export default function SettingsPage() {
               <input
                 type="text"
                 readOnly
-                value="XOF (Franc CFA BCEAO)"
+                value={organization?.currency ? `${organization.currency} (Monnaie Principale)` : "XOF"}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-mono font-medium focus:outline-none"
               />
             </div>
@@ -175,7 +217,7 @@ export default function SettingsPage() {
               <input
                 type="text"
                 readOnly
-                value="Africa/Ouagadougou (UTC+0)"
+                value={organization?.timezone || "Africa/Ouagadougou (UTC+0)"}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-mono font-medium focus:outline-none"
               />
             </div>
@@ -185,7 +227,7 @@ export default function SettingsPage() {
               <input
                 type="text"
                 readOnly
-                value="Burkina Faso 🇧🇫"
+                value={organization?.country || "Burkina Faso"}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-slate-200 font-medium focus:outline-none"
               />
             </div>

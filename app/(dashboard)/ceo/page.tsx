@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { DataSourceBadge } from "@/components/ui/data-source-badge";
 import { createClient } from "@/src/infrastructure/supabase/client";
 import { CEOBriefingService } from "@/src/application/services/CEOAIApplicationServices";
@@ -28,6 +29,7 @@ import {
 } from "lucide-react";
 
 export default function CEOCockpitPage() {
+  const router = useRouter();
   const [promptInput, setPromptInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -115,22 +117,14 @@ export default function CEOCockpitPage() {
           }
         }
 
-        // Fallback to default Org if session is loading or in test runner mode
-        if (!targetOrgId) {
-          const { data: orgs } = await supabase.from("organizations").select("id, name").limit(1);
-          if (orgs && orgs.length > 0) {
-            targetOrgId = orgs[0].id;
-            targetOrgName = orgs[0].name;
-          }
+        if (!user || !targetOrgId) {
+          setIsLoadingData(false);
+          router.push("/login");
+          return;
         }
 
         setOrganizationId(targetOrgId);
         setOrganizationName(targetOrgName);
-
-        if (!targetOrgId) {
-          setIsLoadingData(false);
-          return;
-        }
 
         // 2. Fetch products count & WhatsApp lines
         const { count: prodCount } = await supabase
