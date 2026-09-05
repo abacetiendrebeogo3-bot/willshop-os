@@ -137,9 +137,14 @@ export class InMemoryStockRepository implements IStockRepository {
     const current = await this.getStock(dto.productId, dto.organizationId);
     if (current) {
       if (dto.direction === 'IN') current.physicalStock += dto.quantity;
-      if (dto.direction === 'OUT') current.physicalStock -= dto.quantity;
+      if (dto.direction === 'OUT') {
+        current.physicalStock = Math.max(0, current.physicalStock - dto.quantity);
+        if (dto.movementType === 'SALE') {
+          current.reservedStock = Math.max(0, current.reservedStock - dto.quantity);
+        }
+      }
       if (dto.direction === 'RESERVE') current.reservedStock += dto.quantity;
-      if (dto.direction === 'RELEASE') current.reservedStock -= dto.quantity;
+      if (dto.direction === 'RELEASE') current.reservedStock = Math.max(0, current.reservedStock - dto.quantity);
 
       current.availableStock = current.physicalStock - current.reservedStock;
       current.updatedAt = new Date();
