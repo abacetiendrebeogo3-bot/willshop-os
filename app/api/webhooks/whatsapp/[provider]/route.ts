@@ -275,7 +275,7 @@ export async function POST(
       const metaAdapter = new MetaWhatsAppAdapter();
       await metaAdapter.sendTextMessage(providerPhoneNumberId, {
         toPhoneNumber: cleanPhone,
-        text: aiResult.responseText,
+        messageText: aiResult.responseText,
       });
 
       // Handle Handoff if needed
