@@ -133,7 +133,7 @@ export class SupabaseStrategyRepositories
       dueDate: row.due_date ? new Date(row.due_date) : new Date(),
       status: row.status,
       confidence: row.confidence || 'HIGH',
-      forecastValue: row.forecast_value !== null ? Number(row.forecast_value) : null,
+      forecastValue: row.forecast_value !== null && row.forecast_value !== undefined ? Number(row.forecast_value) : undefined,
       createdBy: row.created_by,
       createdAt: row.created_at ? new Date(row.created_at) : new Date(),
       updatedAt: row.updated_at ? new Date(row.updated_at) : new Date(),
@@ -766,6 +766,16 @@ export class SupabaseStrategyRepositories
       .single();
     if (error) throw new Error(`Supabase error updating decision: ${error.message}`);
     return this.mapDBToDecision(data);
+  }
+  public async findDecisionById(orgId: string, id: string): Promise<StrategicDecision | null> {
+    const { data, error } = await this.client
+      .from('strategic_decisions')
+      .select('*')
+      .eq('organization_id', orgId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw new Error(`Supabase error fetching decision: ${error.message}`);
+    return data ? this.mapDBToDecision(data) : null;
   }
   public async listDecisions(orgId: string, strategyId?: string): Promise<StrategicDecision[]> {
     let query = this.client.from('strategic_decisions').select('*').eq('organization_id', orgId);
