@@ -71,6 +71,71 @@ export class AIToolRegistry {
       permissionLevel: 'GREEN',
       requiredRole: 'MANAGER',
     });
+
+    // --- BUILD 11: TEAM & PRODUCTIVITY TOOLS ---
+    AIToolRegistry.register({
+      name: 'get_team_snapshot',
+      description: 'Obtenir la vue synthétique de l\'équipe, membres actifs, tâches ouvertes, en retard et bloquées',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_employee_workload',
+      description: 'Obtenir la charge de travail et le statut de surcharge/sous-charge par employé',
+      parametersSchema: { type: 'object', properties: { employeeId: { type: 'string' } } },
+      permissionLevel: 'GREEN',
+      requiredRole: 'MANAGER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_overdue_tasks',
+      description: 'Lister les tâches en retard nécessitant une attention ou une réassignation',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_blocked_tasks',
+      description: 'Lister les tâches bloquées avec les raisons du blocage',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_goal_progress',
+      description: 'Obtenir l\'avancement des objectifs d\'entreprise, d\'équipe et individuels',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_employee_scorecard',
+      description: 'Obtenir la fiche de performance contextualisée d\'un employé',
+      parametersSchema: { type: 'object', properties: { employeeId: { type: 'string' }, period: { type: 'string' } } },
+      permissionLevel: 'GREEN',
+      requiredRole: 'MANAGER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_team_performance',
+      description: 'Obtenir l\'évaluation de performance globale de l\'équipe',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'MANAGER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_work_plan',
+      description: 'Obtenir le plan de travail quotidien priorisé d\'un membre de l\'équipe',
+      parametersSchema: { type: 'object', properties: { employeeId: { type: 'string' } } },
+      permissionLevel: 'GREEN',
+      requiredRole: 'VIEWER',
+    });
   }
 
   public static register(tool: AIToolDefinition): void {
