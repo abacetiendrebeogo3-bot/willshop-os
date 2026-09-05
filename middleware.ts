@@ -53,8 +53,10 @@ export async function middleware(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    // 1. If not logged in and accessing protected page -> redirect to /login
-    if (!user && !isPublicPath) {
+    const isApiRoute = pathname.startsWith('/api/');
+
+    // 1. If not logged in and accessing protected page -> redirect to /login (bypass for API routes)
+    if (!user && !isPublicPath && !isApiRoute) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       return NextResponse.redirect(url);
@@ -93,7 +95,7 @@ export async function middleware(request: NextRequest) {
     }
   } catch (err: any) {
     console.error('[Middleware Error]', err?.message);
-    if (!isPublicPath) {
+    if (!isPublicPath && !pathname.startsWith('/api/')) {
       const url = request.nextUrl.clone();
       url.pathname = '/login';
       return NextResponse.redirect(url);
