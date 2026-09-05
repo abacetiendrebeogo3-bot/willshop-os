@@ -119,7 +119,7 @@ export default function MarketingCockpitPage() {
   const overallRoi = totalSpend > 0 ? Math.round((totalProfit / totalSpend) * 100) / 100 : 0;
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto pb-12">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12 animate-fade-in-up">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>

@@ -16,9 +16,9 @@ import {
 
 export default function SalesCRMPage() {
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold tracking-tight text-slate-100">
@@ -43,7 +43,7 @@ export default function SalesCRMPage() {
       </div>
 
       {/* CRM Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <span className="text-xs font-mono text-slate-400 uppercase">Conversations Actives</span>
           <p className="text-2xl font-bold text-slate-100 mt-1 font-mono">14</p>

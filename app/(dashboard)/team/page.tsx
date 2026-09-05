@@ -150,7 +150,7 @@ export default function TeamCockpitPage() {
   ]);
 
   return (
-    <div className="min-h-screen bg-[#0A0A10] text-[#F0EFF4] p-6 space-y-8 font-sans">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-[#181824] pb-6">
         <div>

@@ -228,11 +228,11 @@ export default function CEOCockpitPage() {
               <p className="text-xs text-slate-400">
                 Recommandé pour éviter la rupture de stock du produit *T-Shirt Oversized Premium*.
               </p>
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-900">
-                <button className="px-3 py-1.5 text-xs font-semibold bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg flex items-center gap-1">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 pt-2 border-t border-slate-900">
+                <button className="px-3 py-1.5 text-xs font-semibold bg-red-950 hover:bg-red-900 text-red-300 border border-red-800 rounded-lg flex items-center justify-center gap-1 transition-colors">
                   <X className="w-3.5 h-3.5" /> Refuser
                 </button>
-                <button className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg flex items-center gap-1">
+                <button className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg flex items-center justify-center gap-1 transition-colors shadow-md">
                   <Check className="w-3.5 h-3.5" /> Approuver (Approval Center)
                 </button>
               </div>
@@ -241,7 +241,7 @@ export default function CEOCockpitPage() {
         </div>
 
         {/* Right Column: CEO AI Interactive Chat Assistant (7 cols) */}
-        <div className="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-2xl flex flex-col h-[640px]">
+        <div className="lg:col-span-7 bg-slate-900/80 border border-slate-800 rounded-2xl flex flex-col h-[500px] sm:h-[600px] lg:h-[640px] animate-fade-in-up">
           {/* Chat Header */}
           <div className="p-4 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2.5">

@@ -170,9 +170,9 @@ export default function FinanceDashboardPage() {
   };
 
   return (
-    <div className="p-8 bg-slate-950 text-slate-100 min-h-screen font-sans">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-800 pb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 border-b border-slate-800 pb-6">
         <div>
           <div className="flex items-center gap-3">
             <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400">
@@ -188,13 +188,14 @@ export default function FinanceDashboardPage() {
         </div>
         <div className="flex items-center gap-3">
           <span className="px-3 py-1 text-xs font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5" /> Business Finance Isolated (WillShop Org)
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            SCOPE = BUSINESS (ISOLÉ)
           </span>
         </div>
       </div>
 
       {/* KPI Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-3xl backdrop-blur-xl">
           <div className="flex justify-between items-center text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Trésorerie Totale</span>
@@ -233,7 +234,7 @@ export default function FinanceDashboardPage() {
       </div>
 
       {/* Tabs Bar */}
-      <div className="flex border-b border-slate-800 mb-8 space-x-2 overflow-x-auto">
+      <div className="flex flex-wrap gap-2 border-b border-slate-800 mb-6 overflow-x-auto pb-1">
         {[
           { id: 'overview', label: 'Vue Synthèse', icon: PieChart },
           { id: 'accounts', label: 'Comptes Financiers', icon: CreditCard },

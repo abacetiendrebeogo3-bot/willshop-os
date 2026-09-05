@@ -89,7 +89,7 @@ export default function BiAnalyticsPage() {
   ];
 
   return (
-    <div className="p-8 bg-slate-950 text-slate-100 min-h-screen font-sans">
+    <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up">
       {/* Top Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-800 pb-6">
         <div>
@@ -113,7 +113,7 @@ export default function BiAnalyticsPage() {
       </div>
 
       {/* KPI Cards Header */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <div className="p-5 bg-slate-900/80 border border-slate-800 rounded-3xl backdrop-blur-xl">
           <div className="flex justify-between items-center text-slate-400 mb-2">
             <span className="text-xs font-medium uppercase tracking-wider">Trésorerie Disponible</span>

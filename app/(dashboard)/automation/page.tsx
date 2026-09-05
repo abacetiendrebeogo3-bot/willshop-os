@@ -183,7 +183,7 @@ export default function AutomationDashboardPage() {
     selectedCategory === "ALL" ? rules : rules.filter((r) => r.category === selectedCategory);
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-8 max-w-7xl mx-auto pb-12 animate-fade-in-up">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
