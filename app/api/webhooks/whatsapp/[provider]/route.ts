@@ -194,7 +194,7 @@ export async function POST(
       // 4. Trigger Sales AI Agent
       const { data: products } = await supabase
         .from("products")
-        .select("id, name, sku, selling_price, stock_quantity, status")
+        .select("id, name, sku, category, purchase_price, selling_price, stock_quantity, alert_threshold, status")
         .eq("organization_id", targetOrgId);
 
       const availableProducts = (products || []).map((p) => ({
