@@ -404,3 +404,88 @@ export class SupabaseFinanceRepository implements IFinanceRepository {
     };
   }
 }
+
+import {
+  ProductPerformanceSummary,
+  CustomerRfmSegment,
+  DriverPerformanceMetrics,
+  ZoneDeliveryMetrics,
+  DataQualityIssue,
+} from '../../domain/entities/BIEntities';
+import { IAnalyticsRepository } from '../../domain/interfaces/IDataCoreRepositories';
+
+export class SupabaseAnalyticsRepository implements IAnalyticsRepository {
+  constructor(private readonly client: SupabaseClient) {}
+
+  async getProductPerformance(orgId: string): Promise<ProductPerformanceSummary[]> {
+    const { data, error } = await this.client.rpc('bi_product_performance_summary', { p_org_id: orgId });
+    if (error || !data) return [];
+    return data;
+  }
+
+  async getCustomerRfmSegments(orgId: string): Promise<CustomerRfmSegment[]> {
+    const { data, error } = await this.client.rpc('bi_customer_segmentation_summary', { p_org_id: orgId });
+    if (error || !data) return [];
+    return data;
+  }
+
+  async getDriverPerformance(orgId: string): Promise<DriverPerformanceMetrics[]> {
+    const { data, error } = await this.client.rpc('bi_driver_performance_summary', { p_org_id: orgId });
+    if (error || !data) return [];
+    return data;
+  }
+
+  async getZonePerformance(orgId: string): Promise<ZoneDeliveryMetrics[]> {
+    const { data, error } = await this.client.rpc('bi_delivery_performance_summary', { p_org_id: orgId });
+    if (error || !data) return [];
+    return data;
+  }
+
+  async getDataQualityIssues(orgId: string): Promise<DataQualityIssue[]> {
+    const { data, error } = await this.client
+      .from('data_quality_issues')
+      .select('*')
+      .eq('organization_id', orgId)
+      .is('resolved_at', null);
+
+    if (error || !data) return [];
+    return data.map((r: any) => ({
+      id: r.id,
+      organizationId: r.organization_id,
+      issueType: r.issue_type,
+      severity: r.severity,
+      description: r.description,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+      detectedAt: new Date(r.detected_at),
+      resolvedAt: r.resolved_at ? new Date(r.resolved_at) : null,
+    }));
+  }
+
+  async recordDataQualityIssue(dto: Omit<DataQualityIssue, 'id' | 'detectedAt'>): Promise<DataQualityIssue> {
+    const { data, error } = await this.client
+      .from('data_quality_issues')
+      .insert({
+        organization_id: dto.organizationId,
+        issue_type: dto.issueType,
+        severity: dto.severity,
+        description: dto.description,
+        entity_type: dto.entityType,
+        entity_id: dto.entityId,
+      })
+      .select('*')
+      .single();
+
+    if (error || !data) throw new Error(`Failed to record data quality issue: ${error?.message}`);
+    return {
+      id: data.id,
+      organizationId: data.organization_id,
+      issueType: data.issue_type,
+      severity: data.severity,
+      description: data.description,
+      entityType: data.entity_type,
+      entityId: data.entity_id,
+      detectedAt: new Date(data.detected_at),
+    };
+  }
+}

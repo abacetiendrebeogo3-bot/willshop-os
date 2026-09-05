@@ -125,6 +125,10 @@ export class InMemoryStockRepository implements IStockRepository {
     return this.stocks.get(this.key(productId, orgId)) || null;
   }
 
+  async listByOrg(orgId: string): Promise<ProductStock[]> {
+    return Array.from(this.stocks.values()).filter((s) => s.organizationId === orgId);
+  }
+
   async recordMovement(dto: Omit<StockMovement, 'id' | 'createdAt'>): Promise<StockMovement> {
     const movement: StockMovement = {
       ...dto,
@@ -389,5 +393,113 @@ export class InMemoryGoalRepository implements IGoalRepository {
 
   async listGoals(orgId: string): Promise<Goal[]> {
     return this.goals.filter((g) => g.organizationId === orgId);
+  }
+}
+
+import {
+  ProductPerformanceSummary,
+  CustomerRfmSegment,
+  DriverPerformanceMetrics,
+  ZoneDeliveryMetrics,
+  DataQualityIssue,
+} from '../../domain/entities/BIEntities';
+import { IAnalyticsRepository } from '../../domain/interfaces/IDataCoreRepositories';
+
+export class InMemoryAnalyticsRepository implements IAnalyticsRepository {
+  private dataQualityIssues: DataQualityIssue[] = [];
+
+  async getProductPerformance(orgId: string): Promise<ProductPerformanceSummary[]> {
+    return [
+      {
+        productId: 'prod-001',
+        sku: 'TSH-BLK-L',
+        productName: 'T-Shirt Noir Minimalist WillShop',
+        unitsSold: 45,
+        revenueFcfa: 450000,
+        cogsFcfa: 180000,
+        grossProfitFcfa: 270000,
+        grossMarginPercentage: 60.0,
+        availableStock: 25,
+        performanceTag: 'BEST_SELLER',
+      },
+      {
+        productId: 'prod-002',
+        sku: 'HOD-GRY-M',
+        productName: 'Hoodie Gris Premium WillShop',
+        unitsSold: 12,
+        revenueFcfa: 240000,
+        cogsFcfa: 120000,
+        grossProfitFcfa: 120000,
+        grossMarginPercentage: 50.0,
+        availableStock: 3,
+        performanceTag: 'WATCH',
+      },
+    ];
+  }
+
+  async getCustomerRfmSegments(orgId: string): Promise<CustomerRfmSegment[]> {
+    return [
+      {
+        customerId: 'cust-101',
+        customerName: 'Ibrahim Ouedraogo',
+        recencyDays: 3,
+        frequencyOrdersCount: 5,
+        monetaryTotalFcfa: 125000,
+        segment: 'REPEAT',
+      },
+      {
+        customerId: 'cust-102',
+        customerName: 'Fatou Diallo',
+        recencyDays: 1,
+        frequencyOrdersCount: 1,
+        monetaryTotalFcfa: 25000,
+        segment: 'NEW',
+      },
+    ];
+  }
+
+  async getDriverPerformance(orgId: string): Promise<DriverPerformanceMetrics[]> {
+    return [
+      {
+        driverId: 'drv-01',
+        driverName: 'Moussa Sawadogo',
+        totalAssigned: 20,
+        totalDelivered: 18,
+        totalFailed: 2,
+        successRatePercentage: 90.0,
+        averageDeliveryMinutes: 42,
+      },
+    ];
+  }
+
+  async getZonePerformance(orgId: string): Promise<ZoneDeliveryMetrics[]> {
+    return [
+      {
+        zoneId: 'zone-01',
+        zoneName: 'Ouaga 2000',
+        city: 'Ouagadougou',
+        totalDeliveries: 15,
+        deliveredCount: 14,
+        failedCount: 1,
+        failureRatePercentage: 6.7,
+        deliveryFeeCollectedFcfa: 22500,
+        deliveryCostPaidFcfa: 15000,
+        deliveryMarginFcfa: 7500,
+      },
+    ];
+  }
+
+  async getDataQualityIssues(orgId: string): Promise<DataQualityIssue[]> {
+    return this.dataQualityIssues.filter((i) => i.organizationId === orgId);
+  }
+
+  async recordDataQualityIssue(dto: Omit<DataQualityIssue, 'id' | 'detectedAt'>): Promise<DataQualityIssue> {
+    const issue: DataQualityIssue = {
+      ...dto,
+      id: `dqi-${Date.now()}`,
+      detectedAt: new Date(),
+    };
+    this.dataQualityIssues.push(issue);
+    return issue;
   }
 }

@@ -43,6 +43,7 @@ export interface IProductRepository {
 export interface IStockRepository {
   initializeStock(stock: Omit<ProductStock, 'id' | 'availableStock' | 'createdAt' | 'updatedAt'>): Promise<ProductStock>;
   getStock(productId: string, orgId: string): Promise<ProductStock | null>;
+  listByOrg(orgId: string): Promise<ProductStock[]>;
   recordMovement(movement: Omit<StockMovement, 'id' | 'createdAt'>): Promise<StockMovement>;
   getMovements(productId: string, orgId: string): Promise<StockMovement[]>;
 }
@@ -63,6 +64,23 @@ export interface IDeliveryRepository {
   createDelivery(delivery: Omit<Delivery, 'id' | 'createdAt' | 'updatedAt'>): Promise<Delivery>;
   findByOrderId(orderId: string, orgId: string): Promise<Delivery | null>;
   listByOrg(orgId: string): Promise<Delivery[]>;
+}
+
+import {
+  ProductPerformanceSummary,
+  CustomerRfmSegment,
+  DriverPerformanceMetrics,
+  ZoneDeliveryMetrics,
+  DataQualityIssue,
+} from '../entities/BIEntities';
+
+export interface IAnalyticsRepository {
+  getProductPerformance(orgId: string): Promise<ProductPerformanceSummary[]>;
+  getCustomerRfmSegments(orgId: string): Promise<CustomerRfmSegment[]>;
+  getDriverPerformance(orgId: string): Promise<DriverPerformanceMetrics[]>;
+  getZonePerformance(orgId: string): Promise<ZoneDeliveryMetrics[]>;
+  getDataQualityIssues(orgId: string): Promise<DataQualityIssue[]>;
+  recordDataQualityIssue(issue: Omit<DataQualityIssue, 'id' | 'detectedAt'>): Promise<DataQualityIssue>;
 }
 
 import { FinancialObligationEntity, ObligationType } from '../entities/FinanceEntities';
