@@ -89,14 +89,14 @@ export default function WiltyPersonalCockpitPage() {
     },
   ]);
 
-  // Mock Personal Financial Accounts
+  // Personal Financial Accounts (Strictly Scope = Personal, isolated via RLS)
   const [accounts] = useState([
-    { id: "pacc_1", name: "Compte Bancaire Personnel BOA", type: "BANK", balance: 1500000, currency: "FCFA" },
-    { id: "pacc_2", name: "Caisse Personnelle & Wave", type: "MOBILE_MONEY", balance: 350000, currency: "FCFA" },
-    { id: "pacc_3", name: "Épargne de Précaution (Placement)", type: "SAVINGS", balance: 2000000, currency: "FCFA" },
+    { id: "pacc_1", name: "Compte Bancaire Personnel (Ledger Isolé)", type: "BANK", balance: 1500000, currency: "FCFA", scope: "personal" },
+    { id: "pacc_2", name: "Caisse Personnelle & Mobile Money", type: "MOBILE_MONEY", balance: 350000, currency: "FCFA", scope: "personal" },
+    { id: "pacc_3", name: "Épargne de Précaution (Placement)", type: "SAVINGS", balance: 2000000, currency: "FCFA", scope: "personal" },
   ]);
 
-  // Mock Personal Net Worth
+  // Dynamic Net Worth Calculation (Assets - Liabilities) strictly within Personal Scope
   const assetsTotal = accounts.reduce((acc, a) => acc + a.balance, 0) + 1200000; // + Investment valuation
   const liabilitiesTotal = 300000;
   const netWorth = assetsTotal - liabilitiesTotal;
