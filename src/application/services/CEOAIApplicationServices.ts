@@ -87,20 +87,47 @@ export class CEOBriefingService {
     // Attention checks
     if (snapshot.lowStockProductsCount > 0) {
       attention.push(`${snapshot.lowStockProductsCount} produit(s) atteignent le seuil de stock bas`);
+      evidence.push(EvidenceEngine.createEvidence('stock', 'low_stock_count', snapshot.lowStockProductsCount, '7D'));
     }
     if (snapshot.grossMarginPercent < 30 && snapshot.revenue7Days > 0) {
       attention.push(`Marge brute de ${snapshot.grossMarginPercent}% inférieure à l'objectif de 35%`);
       evidence.push(EvidenceEngine.createEvidence('finance', 'gross_margin_percent', snapshot.grossMarginPercent, '7D'));
     }
 
-    // Opportunities & Priorities
-    opportunities.push('Récupérer les créances clients pour augmenter la trésorerie disponible');
-    priorities.push('1. Traiter les ruptures de stock critiques');
-    priorities.push('2. Reprogrammer les livraisons échouées');
-    priorities.push('3. Valider les dépenses importantes dans l\'Approval Center');
+    // Opportunities
+    if (snapshot.customerReceivablesTotal > 0) {
+      opportunities.push(`Recouvrer ${snapshot.customerReceivablesTotal.toLocaleString()} XOF de créances clients en attente`);
+      evidence.push(EvidenceEngine.createEvidence('finance', 'customer_receivables', snapshot.customerReceivablesTotal, 'realtime'));
+    } else {
+      opportunities.push('Aucune créance client en souffrance. Trésorerie saine.');
+    }
+
+    // Priorities based strictly on real state
+    if (snapshot.outOfStockProductsCount > 0) {
+      priorities.push(`1. Traiter les ${snapshot.outOfStockProductsCount} rupture(s) de stock`);
+    } else if (snapshot.lowStockProductsCount > 0) {
+      priorities.push(`1. Réapprovisionner les ${snapshot.lowStockProductsCount} produit(s) en stock bas`);
+    } else {
+      priorities.push('1. Maintenir le niveau de stock optimal');
+    }
+
+    if (snapshot.failedDeliveriesCount > 0) {
+      priorities.push(`2. Reprogrammer les ${snapshot.failedDeliveriesCount} livraison(s) échouée(s)`);
+    } else {
+      priorities.push('2. Suivre l\'acheminement des livraisons en cours');
+    }
+
+    if (snapshot.customerReceivablesTotal > 0) {
+      priorities.push(`3. Relancer les clients pour les ${snapshot.customerReceivablesTotal.toLocaleString()} XOF de créances`);
+    } else {
+      priorities.push('3. Valider les opportunités de croissance dans l\'Approval Center');
+    }
 
     if (urgent.length === 0) {
       urgent.push('Aucun problème critique urgent détecté. Opérations stables.');
+    }
+    if (attention.length === 0) {
+      attention.push('Aucune alerte secondaire active. Tous les indicateurs sont au vert.');
     }
 
     return {
