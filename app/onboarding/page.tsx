@@ -142,7 +142,12 @@ export default function OnboardingPage() {
       }
 
       if (!res.ok || data.error) {
-        setErrorMessage(data.error || "Erreur lors de la création de l'entreprise");
+        let msg = data.error || "Erreur lors de la création de l'entreprise";
+        if (res.status === 401) {
+          msg = "Votre session d'authentification a expiré ou est invalide. Redirection vers la connexion...";
+          setTimeout(() => router.push("/login"), 2000);
+        }
+        setErrorMessage(msg);
         setIsLoading(false);
         return;
       }
