@@ -21,8 +21,21 @@ import {
   TrendingUp,
   DollarSign,
   ShieldCheck,
-  Tag
+  Tag,
+  Camera,
+  Upload,
+  Star,
+  Trash2,
+  Image as ImageIcon,
+  FileImage
 } from "lucide-react";
+
+interface LocalCreateImage {
+  id: string;
+  file: File;
+  previewUrl: string;
+  isPrimary: boolean;
+}
 
 export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
@@ -37,6 +50,7 @@ export default function ProductsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isSubmittingCreate, setIsSubmittingCreate] = useState(false);
   const [createError, setCreateError] = useState("");
+  const [selectedCreateImages, setSelectedCreateImages] = useState<LocalCreateImage[]>([]);
 
   const [createForm, setCreateForm] = useState({
     name: "",
@@ -100,7 +114,7 @@ export default function ProductsPage() {
 
       const { data: prods, error } = await supabase
         .from("products")
-        .select("*, product_stocks(*)")
+        .select("*, product_stocks(*), product_images(*)")
         .eq("organization_id", currentOrgId)
         .is("deleted_at", null)
         .order("created_at", { ascending: false });
@@ -116,6 +130,57 @@ export default function ProductsPage() {
       setLoading(false);
     }
   }
+
+  // Handle Image Selection for Create Modal
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const files = Array.from(e.target.files);
+    addImages(files);
+  };
+
+  const addImages = (files: File[]) => {
+    if (selectedCreateImages.length + files.length > 5) {
+      setCreateError("Maximum 5 images autorisées par produit.");
+      return;
+    }
+    const newImgs: LocalCreateImage[] = [];
+    for (const f of files) {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(f.type)) {
+        setCreateError("Formats autorisés : JPG, PNG, WEBP.");
+        return;
+      }
+      if (f.size > 5 * 1024 * 1024) {
+        setCreateError("Chaque image doit faire moins de 5 Mo.");
+        return;
+      }
+      newImgs.push({
+        id: Math.random().toString(36).substring(2, 9),
+        file: f,
+        previewUrl: URL.createObjectURL(f),
+        isPrimary: selectedCreateImages.length === 0 && newImgs.length === 0,
+      });
+    }
+    setSelectedCreateImages((prev) => [...prev, ...newImgs]);
+  };
+
+  const removeCreateImage = (id: string) => {
+    setSelectedCreateImages((prev) => {
+      const filtered = prev.filter((i) => i.id !== id);
+      if (filtered.length > 0 && !filtered.some((i) => i.isPrimary)) {
+        filtered[0].isPrimary = true;
+      }
+      return filtered;
+    });
+  };
+
+  const setPrimaryCreateImage = (id: string) => {
+    setSelectedCreateImages((prev) =>
+      prev.map((i) => ({
+        ...i,
+        isPrimary: i.id === id,
+      }))
+    );
+  };
 
   // Handle Create Product
   const handleCreateProduct = async (e: React.FormEvent) => {
@@ -200,7 +265,43 @@ export default function ProductsPage() {
         });
       }
 
+      // 4. Upload Selected Product Images to Supabase Storage & DB
+      if (selectedCreateImages.length > 0) {
+        for (let idx = 0; idx < selectedCreateImages.length; idx++) {
+          const imgItem = selectedCreateImages[idx];
+          const ext = imgItem.file.name.split(".").pop() || "jpg";
+          const cleanFileName = `img_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}.${ext}`;
+          const storagePath = `${orgId}/${newProd.id}/${cleanFileName}`;
+
+          const { error: uploadErr } = await supabase.storage
+            .from("product-images")
+            .upload(storagePath, imgItem.file, {
+              contentType: imgItem.file.type,
+              upsert: true,
+            });
+
+          if (uploadErr) {
+            console.error("[Storage Upload Error]", uploadErr.message);
+            continue;
+          }
+
+          const { data: urlData } = supabase.storage
+            .from("product-images")
+            .getPublicUrl(storagePath);
+
+          await supabase.from("product_images").insert({
+            organization_id: orgId,
+            product_id: newProd.id,
+            storage_path: storagePath,
+            url: urlData.publicUrl,
+            is_primary: imgItem.isPrimary,
+            sort_order: idx,
+          });
+        }
+      }
+
       setIsCreateModalOpen(false);
+      setSelectedCreateImages([]);
       setCreateForm({
         name: "",
         sku: "",
@@ -465,6 +566,7 @@ export default function ProductsPage() {
             <table className="w-full text-left text-xs font-mono">
               <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800">
                 <tr>
+                  <th className="p-3">IMAGE</th>
                   <th className="p-3">PRODUIT & SKU</th>
                   <th className="p-3">CATÉGORIE</th>
                   <th className="p-3">PRIX ACHAT</th>
@@ -485,8 +587,24 @@ export default function ProductsPage() {
                   const avail = phys - res;
                   const margin = (p.selling_price || 0) - (p.purchase_price || 0);
 
+                  const primaryImg = p.product_images?.find((i: any) => i.is_primary)?.url || p.product_images?.[0]?.url;
+
                   return (
                     <tr key={p.id} className="hover:bg-slate-900/40 transition-colors">
+                      <td className="p-3">
+                        {primaryImg ? (
+                          <img
+                            src={primaryImg}
+                            alt={p.name}
+                            className="w-10 h-10 object-cover rounded-xl border border-slate-800 bg-slate-950"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 bg-slate-950 rounded-xl flex flex-col items-center justify-center text-slate-500 border border-slate-800/80">
+                            <Package className="w-4 h-4 text-slate-600" />
+                            <span className="text-[8px] font-mono text-slate-600">Sans img</span>
+                          </div>
+                        )}
+                      </td>
                       <td className="p-3">
                         <Link href={`/operations/products/${p.id}`} className="font-bold text-slate-100 hover:text-primary">
                           {p.name}
@@ -666,6 +784,85 @@ export default function ProductsPage() {
                   onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-primary"
                 />
+              </div>
+
+              {/* 📸 Images du produit */}
+              <div className="space-y-2 border-t border-slate-800 pt-3">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-primary" /> 📸 Images du produit ({selectedCreateImages.length}/5)
+                  </label>
+                  <span className="text-[10px] text-slate-400">JPG, PNG, WEBP (&lt; 5 Mo)</span>
+                </div>
+
+                <div className="border-2 border-dashed border-slate-800 hover:border-primary/50 rounded-2xl p-4 text-center bg-slate-950/60 transition-colors">
+                  <input
+                    type="file"
+                    id="create-image-input"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="create-image-input"
+                    className="cursor-pointer flex flex-col items-center justify-center space-y-1.5"
+                  >
+                    <Upload className="w-6 h-6 text-primary" />
+                    <span className="text-xs font-semibold text-slate-300">
+                      + Ajouter des images
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Glissez-déposez vos images ici ou cliquez pour sélectionner
+                    </span>
+                  </label>
+                </div>
+
+                {selectedCreateImages.length > 0 && (
+                  <div className="grid grid-cols-5 gap-2 pt-1">
+                    {selectedCreateImages.map((img) => (
+                      <div
+                        key={img.id}
+                        className={`relative group rounded-xl overflow-hidden border transition-all aspect-square ${
+                          img.isPrimary
+                            ? "border-amber-400 ring-2 ring-amber-400/30"
+                            : "border-slate-800 hover:border-slate-700"
+                        }`}
+                      >
+                        <img
+                          src={img.previewUrl}
+                          alt="Aperçu"
+                          className="w-full h-full object-cover"
+                        />
+                        {img.isPrimary && (
+                          <span className="absolute top-1 left-1 bg-amber-500 text-black text-[8px] font-bold px-1 rounded flex items-center gap-0.5">
+                            <Star className="w-2.5 h-2.5 fill-black" />
+                          </span>
+                        )}
+                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                          {!img.isPrimary && (
+                            <button
+                              type="button"
+                              onClick={() => setPrimaryCreateImage(img.id)}
+                              className="p-1 rounded bg-amber-500 text-black hover:bg-amber-400"
+                              title="Définir comme principale"
+                            >
+                              <Star className="w-3 h-3" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeCreateImage(img.id)}
+                            className="p-1 rounded bg-rose-500 text-white hover:bg-rose-600"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <button

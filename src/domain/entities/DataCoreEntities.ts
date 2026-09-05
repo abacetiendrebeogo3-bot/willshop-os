@@ -58,6 +58,18 @@ export interface Product {
   deletedAt?: Date | null;
 }
 
+export interface ProductImage {
+  id: string;
+  organizationId: string;
+  productId: string;
+  storagePath: string;
+  url: string;
+  isPrimary: boolean;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface ProductStock {
   id: string;
   organizationId: string;

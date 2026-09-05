@@ -78,7 +78,7 @@ export default function OrdersStockPage() {
       // Load Products & Stocks
       const { data: prods } = await supabase
         .from("products")
-        .select("*, product_stocks(*)")
+        .select("*, product_stocks(*), product_images(*)")
         .eq("organization_id", currentOrgId)
         .is("deleted_at", null);
 

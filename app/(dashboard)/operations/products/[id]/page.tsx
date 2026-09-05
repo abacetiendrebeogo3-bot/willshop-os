@@ -20,7 +20,12 @@ import {
   ShoppingCart,
   Inbox,
   ShieldCheck,
-  Building2
+  Building2,
+  Camera,
+  Star,
+  Upload,
+  Trash2,
+  Image as ImageIcon
 } from "lucide-react";
 
 export default function ProductDetailPage() {
@@ -33,6 +38,11 @@ export default function ProductDetailPage() {
   const [stock, setStock] = useState<any | null>(null);
   const [movements, setMovements] = useState<any[]>([]);
   const [orderItems, setOrderItems] = useState<any[]>([]);
+
+  // Images state
+  const [images, setImages] = useState<any[]>([]);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   useEffect(() => {
     if (productId) {
@@ -105,12 +115,180 @@ export default function ProductDetailPage() {
         .order("created_at", { ascending: false });
 
       if (oItems) setOrderItems(oItems);
+
+      // 5. Load Product Images
+      const { data: imgs } = await supabase
+        .from("product_images")
+        .select("*")
+        .eq("product_id", productId)
+        .eq("organization_id", orgId)
+        .order("is_primary", { ascending: false })
+        .order("sort_order", { ascending: true });
+
+      if (imgs && imgs.length > 0) {
+        setImages(imgs);
+        const primary = imgs.find((i: any) => i.is_primary) || imgs[0];
+        setSelectedImage(primary.url);
+      } else {
+        setImages([]);
+        setSelectedImage(null);
+      }
     } catch (err) {
       console.error("[Product Detail Exception]", err);
     } finally {
       setLoading(false);
     }
   }
+
+  // Handle Set Primary Image
+  const handleSetPrimaryImage = async (imageId: string) => {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: roles } = await supabase
+        .from("user_organization_roles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .is("deleted_at", null);
+
+      if (!roles || roles.length === 0) return;
+      const orgId = roles[0].organization_id;
+
+      // Reset all images for this product
+      await supabase
+        .from("product_images")
+        .update({ is_primary: false })
+        .eq("product_id", productId)
+        .eq("organization_id", orgId);
+
+      // Set target image to primary
+      await supabase
+        .from("product_images")
+        .update({ is_primary: true })
+        .eq("id", imageId)
+        .eq("organization_id", orgId);
+
+      await loadProductDetail();
+    } catch (err) {
+      console.error("[Set Primary Image Error]", err);
+    }
+  };
+
+  // Handle Delete Image
+  const handleDeleteImage = async (img: any) => {
+    if (!confirm("Voulez-vous vraiment supprimer cette image ?")) return;
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: roles } = await supabase
+        .from("user_organization_roles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .is("deleted_at", null);
+
+      if (!roles || roles.length === 0) return;
+      const orgId = roles[0].organization_id;
+
+      // Delete record from DB
+      await supabase
+        .from("product_images")
+        .delete()
+        .eq("id", img.id)
+        .eq("organization_id", orgId);
+
+      // Delete file from Storage if storage_path present
+      if (img.storage_path) {
+        await supabase.storage.from("product-images").remove([img.storage_path]);
+      }
+
+      await loadProductDetail();
+    } catch (err) {
+      console.error("[Delete Image Error]", err);
+    }
+  };
+
+  // Handle Upload Image from Detail Page
+  const handleUploadDetailImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+
+    if (images.length + files.length > 5) {
+      alert("Maximum 5 images autorisées par produit.");
+      return;
+    }
+
+    setIsUploadingImage(true);
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: roles } = await supabase
+        .from("user_organization_roles")
+        .select("organization_id")
+        .eq("user_id", user.id)
+        .is("deleted_at", null);
+
+      if (!roles || roles.length === 0) return;
+      const orgId = roles[0].organization_id;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+          alert("Formats autorisés : JPG, PNG, WEBP");
+          continue;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+          alert("Chaque image doit faire moins de 5 Mo.");
+          continue;
+        }
+
+        const ext = file.name.split(".").pop() || "jpg";
+        const cleanFileName = `img_${Date.now()}_${i}_${Math.random().toString(36).substring(2, 6)}.${ext}`;
+        const storagePath = `${orgId}/${productId}/${cleanFileName}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from("product-images")
+          .upload(storagePath, file, { contentType: file.type, upsert: true });
+
+        if (uploadErr) {
+          console.error("[Storage Upload Error]", uploadErr.message);
+          continue;
+        }
+
+        const { data: urlData } = supabase.storage
+          .from("product-images")
+          .getPublicUrl(storagePath);
+
+        const isFirst = images.length === 0 && i === 0;
+
+        await supabase.from("product_images").insert({
+          organization_id: orgId,
+          product_id: productId,
+          storage_path: storagePath,
+          url: urlData.publicUrl,
+          is_primary: isFirst,
+          sort_order: images.length + i,
+        });
+      }
+
+      await loadProductDetail();
+    } catch (err) {
+      console.error("[Upload Detail Images Exception]", err);
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -217,8 +395,102 @@ export default function ProductDetailPage() {
         </Card>
       </div>
 
-      {/* Main Grid: Description & Stock Breakdown */}
+      {/* Main Grid: Galerie, Description & Stock Breakdown */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Galerie des Images */}
+        <Card className="p-6 space-y-4 lg:col-span-1">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <h2 className="font-semibold text-slate-100 text-sm flex items-center gap-2">
+              <Camera className="w-4 h-4 text-primary" /> Galerie Produit ({images.length}/5)
+            </h2>
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/20 hover:bg-primary/30 text-primary text-xs font-semibold transition-colors">
+              <Upload className="w-3.5 h-3.5" />
+              <span>+ Image</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                onChange={handleUploadDetailImages}
+                disabled={isUploadingImage}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {isUploadingImage ? (
+            <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-primary" /> Upload des images en cours...
+            </div>
+          ) : images.length === 0 ? (
+            <div className="border-2 border-dashed border-slate-800 rounded-2xl p-6 text-center space-y-2 bg-slate-950/40">
+              <ImageIcon className="w-8 h-8 mx-auto text-slate-600" />
+              <p className="text-xs font-semibold text-slate-400">Aucune image enregistrée</p>
+              <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                Ajoutez des images pour valoriser ce produit dans le catalogue et sur WhatsApp.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Image Principale Display */}
+              <div className="relative rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 aspect-4/3 group">
+                <img
+                  src={selectedImage || images[0]?.url}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                />
+                {images.find((i) => i.url === selectedImage)?.is_primary && (
+                  <span className="absolute top-2 left-2 bg-amber-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-md">
+                    <Star className="w-3 h-3 fill-black" /> Image Principale
+                  </span>
+                )}
+                {/* Image Overlay Controls */}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  {images.find((i) => i.url === selectedImage) && (
+                    <>
+                      {!images.find((i) => i.url === selectedImage)?.is_primary && (
+                        <button
+                          onClick={() => handleSetPrimaryImage(images.find((i) => i.url === selectedImage).id)}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500 text-black font-semibold text-xs flex items-center gap-1 hover:bg-amber-400"
+                        >
+                          <Star className="w-3.5 h-3.5 fill-black" /> Définir Principale
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDeleteImage(images.find((i) => i.url === selectedImage))}
+                        className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-semibold text-xs flex items-center gap-1 hover:bg-rose-500"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Thumbnails list */}
+              <div className="grid grid-cols-5 gap-2">
+                {images.map((img) => (
+                  <button
+                    key={img.id}
+                    onClick={() => setSelectedImage(img.url)}
+                    className={`relative rounded-xl overflow-hidden border aspect-square transition-all ${
+                      selectedImage === img.url
+                        ? "border-primary ring-2 ring-primary/40"
+                        : "border-slate-800 hover:border-slate-700 opacity-70 hover:opacity-100"
+                    }`}
+                  >
+                    <img src={img.url} alt="Miniature" className="w-full h-full object-cover" />
+                    {img.is_primary && (
+                      <span className="absolute top-0.5 left-0.5 bg-amber-500 rounded-full p-0.5">
+                        <Star className="w-2 h-2 fill-black text-black" />
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+
         {/* Description & Attributes */}
         <Card className="p-6 space-y-4 lg:col-span-1">
           <h2 className="font-semibold text-slate-100 text-sm border-b border-slate-800 pb-2">
