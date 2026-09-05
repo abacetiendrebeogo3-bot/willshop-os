@@ -233,6 +233,103 @@ export class AIToolRegistry {
       permissionLevel: 'GREEN',
       requiredRole: 'MANAGER',
     });
+
+    // --- BUILD 13: WILTY PERSONAL OS TOOLS ---
+    AIToolRegistry.register({
+      name: 'get_personal_snapshot',
+      description: 'Obtenir la vue synthétique instantanée de la vie personnelle de Willy Tiendré',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_today_tasks',
+      description: 'Obtenir la liste des tâches personnelles prioritaires du jour',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_goal_progress',
+      description: 'Obtenir l\'avancement et les trajectoires des objectifs personnels',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_financial_summary',
+      description: 'Obtenir la situation financière personnelle exacte (comptes isolés)',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_net_worth',
+      description: 'Obtenir le calcul du patrimoine personnel (Assets - Liabilities)',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_budget_status',
+      description: 'Obtenir l\'état des budgets personnels par catégorie',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_projects',
+      description: 'Lister les projets personnels actifs, bloqués ou planifiés',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_habits_streak',
+      description: 'Obtenir le bilan des habitudes et des séries de régularité (streaks)',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_learning_progress',
+      description: 'Obtenir l\'avancement des compétences et apprentissages personnels',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_personal_decisions',
+      description: 'Consulter le journal des décisions personnelles et leurs réévaluations',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_wilty_daily_briefing',
+      description: 'Générer le briefing du matin personnalisé pour Willy Tiendré',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
+
+    AIToolRegistry.register({
+      name: 'get_wilty_weekly_review',
+      description: 'Générer le bilan hebdomadaire personnel avec analyse Stop/Start/Continue',
+      parametersSchema: { type: 'object', properties: {} },
+      permissionLevel: 'GREEN',
+      requiredRole: 'OWNER',
+    });
   }
 
   public static register(tool: AIToolDefinition): void {
