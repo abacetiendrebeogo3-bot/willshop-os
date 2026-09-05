@@ -4,7 +4,20 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/infrastructure/supabase/client";
-import { ArrowRight, Loader2, Lock, Mail, Phone, User, CheckCircle2, AlertCircle } from "lucide-react";
+import {
+  ArrowRight,
+  Loader2,
+  Lock,
+  Mail,
+  Phone,
+  User,
+  CheckCircle2,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Building2,
+} from "lucide-react";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -16,9 +29,16 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+
+  // Real-time password validations
+  const isPasswordLengthValid = password.length >= 6;
+  const doPasswordsMatch = password.length > 0 && password === confirmPassword;
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +64,7 @@ export default function SignupPage() {
     }
 
     if (password !== confirmPassword) {
-      setErrorMessage("Les mots de passe ne correspondent pas.");
+      setErrorMessage("Les deux mots de passe ne correspondent pas.");
       return;
     }
 
@@ -68,7 +88,10 @@ export default function SignupPage() {
       if (error) {
         let msg = error.message || "Erreur lors de la création du compte.";
         if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
-          msg = "Impossible de contacter le serveur d'authentification Supabase. Si vous êtes en local, vérifiez que 'npm run dev' est démarré avec le fichier .env.local configuré. Si vous utilisez Vercel, vérifiez que NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY sont ajoutées dans les variables d'environnement Vercel.";
+          msg =
+            "Impossible de contacter le serveur d'authentification Supabase. Vérifiez les variables d'environnement Vercel (NEXT_PUBLIC_SUPABASE_URL & ANON_KEY).";
+        } else if (msg.includes("User already registered")) {
+          msg = "Un compte existe déjà avec cette adresse email. Veuillez vous connecter.";
         }
         setErrorMessage(msg);
         setIsLoading(false);
@@ -76,20 +99,23 @@ export default function SignupPage() {
       }
 
       if (data.session) {
-        setSuccessMessage("Compte créé avec succès ! Redirection vers l'espace entreprise...");
+        setSuccessMessage("🟢 Compte Supabase Auth créé avec succès ! Redirection vers la création d'entreprise...");
         setTimeout(() => {
           router.push("/onboarding");
         }, 1200);
       } else {
-        setSuccessMessage("Compte créé ! Veuillez vérifier votre email pour confirmer l'inscription, puis connectez-vous.");
+        setSuccessMessage(
+          "🟢 Compte créé dans Supabase Auth ! Si la confirmation par email est activée sur Supabase, validez votre lien puis connectez-vous."
+        );
         setTimeout(() => {
           router.push("/login?registered=true");
-        }, 2000);
+        }, 2500);
       }
     } catch (err: any) {
       let msg = err?.message || "Une erreur inattendue est survenue.";
       if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
-        msg = "Impossible de contacter le serveur d'authentification Supabase (Failed to fetch). Si vous êtes en local, vérifiez que le serveur dev tourne avec le fichier .env.local configuré. Sur Vercel, ajoutez NEXT_PUBLIC_SUPABASE_URL et NEXT_PUBLIC_SUPABASE_ANON_KEY dans Environment Variables puis redéployez.";
+        msg =
+          "Impossible de contacter le serveur Supabase. Vérifiez votre connexion Internet et les variables Vercel.";
       }
       setErrorMessage(msg);
     } finally {
@@ -98,42 +124,61 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center items-center p-6 selection:bg-primary/20">
-      <div className="w-full max-w-md space-y-6">
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center items-center p-4 sm:p-6 selection:bg-primary/20">
+      <div className="w-full max-w-lg space-y-5">
         {/* Header */}
         <div className="text-center space-y-2">
-          <Link href="/" className="inline-flex items-center gap-2 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center font-black text-lg text-white shadow-lg shadow-primary/20">
+          <Link href="/" className="inline-flex items-center gap-2.5 mb-1 group">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-primary/25 transition-transform group-hover:scale-105">
               W
             </div>
-            <span className="font-bold text-xl tracking-tight">WILLShop OS</span>
+            <span className="font-extrabold text-2xl tracking-tight">WILLShop OS</span>
           </Link>
-          <h1 className="text-2xl font-bold tracking-tight">Créer votre compte</h1>
-          <p className="text-xs text-muted-foreground">
-            Rejoignez WILLShop OS et déployez votre système d'exploitation business.
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-semibold">
+            <ShieldCheck className="w-3.5 h-3.5" /> Étape 1/2 : Compte Utilisateur
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">Créer votre compte professionnel</h1>
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+            Créez votre accès personnel avant de configurer votre entreprise sur WILLShop OS.
           </p>
         </div>
 
+        {/* Mode Switcher Tabs */}
+        <div className="grid grid-cols-2 p-1 bg-muted/50 rounded-2xl border border-border text-xs font-medium">
+          <div className="py-2 text-center rounded-xl bg-card text-foreground font-semibold shadow-sm border border-border flex items-center justify-center gap-1.5">
+            <User className="w-3.5 h-3.5 text-primary" /> Créer un compte
+          </div>
+          <Link
+            href="/login"
+            className="py-2 text-center rounded-xl text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-1.5"
+          >
+            <Lock className="w-3.5 h-3.5" /> Se connecter
+          </Link>
+        </div>
+
         {/* Form Card */}
-        <div className="p-6 rounded-3xl bg-card border border-border shadow-xl space-y-4">
+        <div className="p-6 sm:p-8 rounded-3xl bg-card border border-border shadow-2xl space-y-5">
           {errorMessage && (
-            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">{errorMessage}</div>
             </div>
           )}
 
           {successMessage && (
-            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{successMessage}</span>
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-start gap-2.5">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">{successMessage}</div>
             </div>
           )}
 
           <form onSubmit={handleSignup} className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Prénom</label>
+            {/* Identity Group */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span>Prénom <span className="text-rose-500">*</span></span>
+                </label>
                 <div className="relative">
                   <User className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
                   <input
@@ -142,41 +187,50 @@ export default function SignupPage() {
                     onChange={(e) => setFirstName(e.target.value)}
                     placeholder="Amadou"
                     required
-                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                   />
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Nom</label>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                  <span>Nom <span className="text-rose-500">*</span></span>
+                </label>
                 <input
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   placeholder="Fall"
                   required
-                  className="w-full bg-background border border-input rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full bg-background border border-input rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Adresse Email</label>
+            {/* Email */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-foreground">
+                Adresse email professionnelle <span className="text-rose-500">*</span>
+              </label>
               <div className="relative">
                 <Mail className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="amadou@entreprise.com"
+                  placeholder="amadou@votre-entreprise.com"
                   required
-                  className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Téléphone professionnel</label>
+            {/* Phone */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                <span>Téléphone professionnel</span>
+                <span className="text-[10px] text-muted-foreground font-normal">(Optionnel)</span>
+              </label>
               <div className="relative">
                 <Phone className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
                 <input
@@ -184,49 +238,105 @@ export default function SignupPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+226 70 00 00 00"
-                  className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Mot de passe</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+            {/* Password Section Highlighted */}
+            <div className="pt-2 pb-1 border-t border-border/60 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 text-primary" /> Sécurité du compte
+                </span>
+                <span className="text-[10px] text-muted-foreground">Min. 6 caractères</span>
+              </div>
+
+              {/* Password Input */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">
+                  Mot de passe <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Créez un mot de passe sécurisé"
+                    required
+                    minLength={6}
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                    title={showPassword ? "Masquer" : "Afficher"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirm Password Input */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-foreground">
+                  Confirmation du mot de passe <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
+                  <input
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Répétez le mot de passe"
+                    required
+                    minLength={6}
+                    className="w-full bg-background border border-input rounded-xl pl-9 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                    title={showConfirmPassword ? "Masquer" : "Afficher"}
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Live Password Rules Indicator */}
+              <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px]">
+                <div
+                  className={`flex items-center gap-1 font-medium ${
+                    isPasswordLengthValid ? "text-emerald-500" : "text-muted-foreground"
+                  }`}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" /> 6 caractères minimum
+                </div>
+                {confirmPassword.length > 0 && (
+                  <div
+                    className={`flex items-center gap-1 font-medium ${
+                      doPasswordsMatch ? "text-emerald-500" : "text-rose-400"
+                    }`}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {doPasswordsMatch ? "Mots de passe identiques" : "Les mots de passe diffèrent"}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Confirmation du mot de passe</label>
-              <div className="relative">
-                <Lock className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-            </div>
-
+            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
+              className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-95 active:scale-[0.99] transition-all shadow-xl shadow-primary/25 flex items-center justify-center gap-2 disabled:opacity-50 mt-3 cursor-pointer"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Création du compte...
+                  <Loader2 className="w-4 h-4 animate-spin" /> Création du compte Supabase Auth...
                 </>
               ) : (
                 <>
@@ -236,10 +346,11 @@ export default function SignupPage() {
             </button>
           </form>
 
-          <div className="pt-2 text-center text-xs text-muted-foreground">
-            Vous avez déjà un compte ?{" "}
+          {/* Footer note */}
+          <div className="pt-2 text-center text-xs text-muted-foreground border-t border-border/40">
+            En vous inscrivant, vous accédez à votre espace entreprise.{" "}
             <Link href="/login" className="font-semibold text-primary hover:underline">
-              Se connecter
+              Déjà inscrit ? Connectez-vous
             </Link>
           </div>
         </div>

@@ -4,7 +4,18 @@ import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/src/infrastructure/supabase/client";
-import { ArrowRight, Loader2, Lock, Mail, AlertCircle, CheckCircle2 } from "lucide-react";
+import {
+  ArrowRight,
+  Loader2,
+  Lock,
+  Mail,
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  User,
+  ShieldCheck,
+} from "lucide-react";
 
 function LoginFormContent() {
   const router = useRouter();
@@ -12,13 +23,14 @@ function LoginFormContent() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
 
   useEffect(() => {
     if (searchParams.get("registered") === "true") {
-      setInfoMessage("Votre compte a été créé avec succès ! Connectez-vous ci-dessous.");
+      setInfoMessage("Votre compte Supabase Auth a été créé ! Connectez-vous ci-dessous.");
     }
   }, [searchParams]);
 
@@ -47,7 +59,10 @@ function LoginFormContent() {
       if (error) {
         let msg = error.message || "Email ou mot de passe incorrect.";
         if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
-          msg = "Impossible de contacter le serveur d'authentification Supabase. Vérifiez votre connexion Internet ou les variables d'environnement Supabase.";
+          msg =
+            "Impossible de contacter le serveur d'authentification Supabase. Vérifiez les variables Vercel.";
+        } else if (msg.includes("Invalid login credentials")) {
+          msg = "Email ou mot de passe incorrect. Vérifiez vos identifiants.";
         }
         setErrorMessage(msg);
         setIsLoading(false);
@@ -71,7 +86,8 @@ function LoginFormContent() {
     } catch (err: any) {
       let msg = err?.message || "Une erreur inattendue est survenue.";
       if (msg.includes("Failed to fetch") || msg.includes("fetch failed")) {
-        msg = "Impossible de contacter le serveur d'authentification Supabase (Failed to fetch). Vérifiez la configuration Supabase.";
+        msg =
+          "Impossible de contacter le serveur d'authentification Supabase. Vérifiez les variables Vercel.";
       }
       setErrorMessage(msg);
       setIsLoading(false);
@@ -79,24 +95,25 @@ function LoginFormContent() {
   };
 
   return (
-    <div className="p-6 rounded-3xl bg-card border border-border shadow-xl space-y-4">
+    <div className="p-6 sm:p-8 rounded-3xl bg-card border border-border shadow-2xl space-y-5">
       {infoMessage && (
-        <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>{infoMessage}</span>
+        <div className="p-3.5 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs flex items-start gap-2.5">
+          <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="leading-relaxed">{infoMessage}</div>
         </div>
       )}
 
       {errorMessage && (
-        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{errorMessage}</span>
+        <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="leading-relaxed">{errorMessage}</div>
         </div>
       )}
 
       <form onSubmit={handleLogin} className="space-y-4">
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Adresse Email</label>
+        {/* Email */}
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-foreground">Adresse Email</label>
           <div className="relative">
             <Mail className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
             <input
@@ -105,14 +122,15 @@ function LoginFormContent() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="nom@entreprise.com"
               required
-              className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
             />
           </div>
         </div>
 
-        <div className="space-y-1.5">
+        {/* Password */}
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-muted-foreground">Mot de passe</label>
+            <label className="text-xs font-semibold text-foreground">Mot de passe</label>
             <button
               type="button"
               onClick={() => alert("Un email de réinitialisation vous sera envoyé si votre compte existe.")}
@@ -124,20 +142,29 @@ function LoginFormContent() {
           <div className="relative">
             <Lock className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full bg-background border border-input rounded-xl pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              className="w-full bg-background border border-input rounded-xl pl-9 pr-10 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary transition-all"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors p-0.5"
+              title={showPassword ? "Masquer" : "Afficher"}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
           </div>
         </div>
 
+        {/* Submit */}
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
+          className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-95 active:scale-[0.99] transition-all shadow-xl shadow-primary/25 flex items-center justify-center gap-2 disabled:opacity-50 mt-3 cursor-pointer"
         >
           {isLoading ? (
             <>
@@ -151,10 +178,10 @@ function LoginFormContent() {
         </button>
       </form>
 
-      <div className="pt-2 text-center text-xs text-muted-foreground">
+      <div className="pt-2 text-center text-xs text-muted-foreground border-t border-border/40">
         Vous n'avez pas encore d'espace ?{" "}
         <Link href="/signup" className="font-semibold text-primary hover:underline">
-          Créer un compte
+          Créer un compte professionnel
         </Link>
       </div>
     </div>
@@ -163,26 +190,42 @@ function LoginFormContent() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center items-center p-6 selection:bg-primary/20">
-      <div className="w-full max-w-md space-y-6">
+    <div className="min-h-screen bg-background text-foreground flex flex-col justify-center items-center p-4 sm:p-6 selection:bg-primary/20">
+      <div className="w-full max-w-lg space-y-5">
         {/* Header */}
         <div className="text-center space-y-2">
-          <Link href="/" className="inline-flex items-center gap-2 mb-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center font-black text-lg text-white shadow-lg shadow-primary/20">
+          <Link href="/" className="inline-flex items-center gap-2.5 mb-1 group">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-primary/25 transition-transform group-hover:scale-105">
               W
             </div>
-            <span className="font-bold text-xl tracking-tight">WILLShop OS</span>
+            <span className="font-extrabold text-2xl tracking-tight">WILLShop OS</span>
           </Link>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-semibold">
+            <ShieldCheck className="w-3.5 h-3.5" /> Accès Espace Client
+          </div>
           <h1 className="text-2xl font-bold tracking-tight">Connexion à votre espace</h1>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground max-w-sm mx-auto">
             Accédez au système d'exploitation intelligent de votre entreprise.
           </p>
+        </div>
+
+        {/* Mode Switcher Tabs */}
+        <div className="grid grid-cols-2 p-1 bg-muted/50 rounded-2xl border border-border text-xs font-medium">
+          <Link
+            href="/signup"
+            className="py-2 text-center rounded-xl text-muted-foreground hover:text-foreground transition-colors flex items-center justify-center gap-1.5"
+          >
+            <User className="w-3.5 h-3.5" /> Créer un compte
+          </Link>
+          <div className="py-2 text-center rounded-xl bg-card text-foreground font-semibold shadow-sm border border-border flex items-center justify-center gap-1.5">
+            <Lock className="w-3.5 h-3.5 text-primary" /> Se connecter
+          </div>
         </div>
 
         {/* Suspense Wrapped Form Card */}
         <Suspense
           fallback={
-            <div className="p-6 rounded-3xl bg-card border border-border shadow-xl flex items-center justify-center py-12">
+            <div className="p-8 rounded-3xl bg-card border border-border shadow-2xl flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
           }
