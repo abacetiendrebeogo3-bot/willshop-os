@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Bell, Search, UserCheck, ShieldAlert, Cpu } from "lucide-react";
-import { Badge } from "../ui/badge";
+import { Badge } from "@/components/ui/card";
 
 export function Navbar() {
   return (

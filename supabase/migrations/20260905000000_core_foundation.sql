@@ -130,6 +130,7 @@ CREATE OR REPLACE FUNCTION public.is_org_member(p_org_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 STABLE
 AS $$
     SELECT EXISTS (
@@ -145,6 +146,7 @@ CREATE OR REPLACE FUNCTION public.get_user_org_role(p_org_id UUID)
 RETURNS user_role
 LANGUAGE sql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 STABLE
 AS $$
     SELECT role
