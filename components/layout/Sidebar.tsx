@@ -15,6 +15,7 @@ import {
   UserCheck,
   Settings,
   ShieldCheck,
+  Zap,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { name: "Ventes & CRM", href: "/sales", icon: MessageSquare, badge: "Live" },
   { name: "Opérations", href: "/orders", icon: Package },
   { name: "Finance", href: "/finance", icon: Wallet },
+  { name: "Automatisation", href: "/automation", icon: Zap, badge: "Auto" },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
   { name: "Équipe", href: "/team", icon: Users },
   { name: "Intelligence", href: "/intelligence", icon: BrainCircuit, badge: "AI" },
