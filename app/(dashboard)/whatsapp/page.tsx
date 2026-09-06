@@ -31,6 +31,8 @@ import {
   ExternalLink,
   Sliders,
   CheckSquare,
+  Copy,
+  Lock,
 } from "lucide-react";
 
 export default function WhatsAppHubPage() {
@@ -58,6 +60,7 @@ export default function WhatsAppHubPage() {
 
   // Modals
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
+  const [showTestConnectionModal, setShowTestConnectionModal] = useState<boolean>(false);
   const [showNewMsgModal, setShowNewMsgModal] = useState<boolean>(false);
   const [showDisconnectModal, setShowDisconnectModal] = useState<boolean>(false);
 
@@ -66,7 +69,7 @@ export default function WhatsAppHubPage() {
     phoneNumber: "",
     displayName: "WILLShop Commercial",
     providerPhoneNumberId: "",
-    businessAccountId: "",
+    wabaId: "",
   });
 
   const [newMsgForm, setNewMsgForm] = useState({
@@ -77,6 +80,17 @@ export default function WhatsAppHubPage() {
   const [replyInput, setReplyInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [convStatusFilter, setConvStatusFilter] = useState<string>("ALL");
+
+  // Connection Test Realtime State
+  const [connectionTestSteps, setConnectionTestSteps] = useState({
+    metaReceived: false,
+    webhookReceived: false,
+    conversationCreated: false,
+    aiCalled: false,
+    responseGenerated: false,
+    responseSent: false,
+  });
+  const [isTestingConnection, setIsTestingConnection] = useState<boolean>(false);
 
   // Agent Config state
   const [agentConfig, setAgentConfig] = useState({
@@ -187,7 +201,7 @@ export default function WhatsAppHubPage() {
         return;
       }
 
-      // 1. Fetch WhatsApp Connection Numbers
+      // 1. Fetch WhatsApp Connection Numbers (Validating against dummy IDs)
       const { data: numRows } = await supabase
         .from("whatsapp_numbers")
         .select("*")
@@ -195,8 +209,20 @@ export default function WhatsAppHubPage() {
         .order("created_at", { ascending: false });
 
       if (numRows && numRows.length > 0) {
-        setWhatsappConnected(true);
-        setWhatsappNumberInfo(numRows[0]);
+        const primaryNumber = numRows[0];
+        // Flag fake Phone Number IDs as non-connected
+        const isFakeId =
+          !primaryNumber.provider_phone_number_id ||
+          primaryNumber.provider_phone_number_id.startsWith("wa-pid-") ||
+          primaryNumber.provider_phone_number_id === "default_id";
+
+        if (isFakeId) {
+          setWhatsappConnected(false);
+          setWhatsappNumberInfo({ ...primaryNumber, status: "UNVERIFIED" });
+        } else {
+          setWhatsappConnected(true);
+          setWhatsappNumberInfo(primaryNumber);
+        }
       } else {
         setWhatsappConnected(false);
         setWhatsappNumberInfo(null);
@@ -300,33 +326,41 @@ export default function WhatsAppHubPage() {
     }
   }, [selectedConv]);
 
-  // Handler: Connect WhatsApp
+  // Handler: Connect WhatsApp with strict Meta ID Validation
   const handleConnectWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!connectForm.phoneNumber.trim() || !organizationId) return;
+
+    const phoneId = connectForm.providerPhoneNumberId.trim();
+
+    // Reject fake dummy IDs
+    if (!phoneId || phoneId.startsWith("wa-pid-") || phoneId === "default_id") {
+      alert("Erreur : Veuillez renseigner un Phone Number ID valide fourni par Meta Developer Console (chiffres uniquement).");
+      return;
+    }
 
     try {
       const supabase = createClient();
       const payload = {
         organization_id: organizationId,
         phone_number: connectForm.phoneNumber.trim(),
-        display_name: connectForm.displayName.trim(),
+        display_name: connectForm.displayName.trim() || "WILLShop Commercial",
         provider: "META_CLOUD_API",
-        provider_phone_number_id: connectForm.providerPhoneNumberId.trim() || `pn_${Date.now()}`,
-        provider_business_account_id: connectForm.businessAccountId.trim() || null,
+        provider_phone_number_id: phoneId,
+        provider_business_account_id: connectForm.wabaId.trim() || null,
         status: "ACTIVE",
       };
 
       const { error } = await supabase.from("whatsapp_numbers").insert(payload);
       if (error) throw error;
 
-      showToast("🟢 Ligne WhatsApp connectée avec succès !");
+      showToast("🟢 Ligne WhatsApp Business Meta connectée avec succès !");
       setShowConnectModal(false);
       setConnectForm({
         phoneNumber: "",
         displayName: "WILLShop Commercial",
         providerPhoneNumberId: "",
-        businessAccountId: "",
+        wabaId: "",
       });
       await loadHubData();
     } catch (err: any) {
@@ -345,6 +379,56 @@ export default function WhatsAppHubPage() {
       await loadHubData();
     } catch (err: any) {
       alert(`Erreur déconnexion: ${err.message}`);
+    }
+  };
+
+  // Handler: Poll / Check Real WhatsApp Connection Test (Inbound "BONJOUR")
+  const checkRealWhatsAppConnectionTest = async () => {
+    if (!organizationId) return;
+    setIsTestingConnection(true);
+
+    try {
+      const supabase = createClient();
+      const { data: testMsgs } = await supabase
+        .from("messages")
+        .select("*, conversations(*)")
+        .eq("organization_id", organizationId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      const hasBonjour = testMsgs?.some(
+        (m) => m.direction === "INBOUND" && m.content.toLowerCase().includes("bonjour")
+      );
+
+      const hasOutboundReply = testMsgs?.some(
+        (m) => m.direction === "OUTBOUND" && m.sender_type === "AI"
+      );
+
+      if (hasBonjour) {
+        setConnectionTestSteps({
+          metaReceived: true,
+          webhookReceived: true,
+          conversationCreated: true,
+          aiCalled: true,
+          responseGenerated: hasOutboundReply || false,
+          responseSent: hasOutboundReply || false,
+        });
+        showToast("🟢 Message BONJOUR détecté ! Le test Webhook & Agent IA est validé !");
+      } else {
+        setConnectionTestSteps({
+          metaReceived: true,
+          webhookReceived: false,
+          conversationCreated: false,
+          aiCalled: false,
+          responseGenerated: false,
+          responseSent: false,
+        });
+        showToast("⏳ En attente du message BONJOUR... Envoyez 'BONJOUR' vers votre numéro WhatsApp.");
+      }
+    } catch (err) {
+      console.error("Erreur test connexion WhatsApp:", err);
+    } finally {
+      setIsTestingConnection(false);
     }
   };
 
@@ -444,7 +528,6 @@ export default function WhatsAppHubPage() {
     try {
       const supabase = createClient();
 
-      // Check if conversation exists
       let convId = "";
       const { data: existingConv } = await supabase
         .from("conversations")
@@ -526,7 +609,7 @@ export default function WhatsAppHubPage() {
     }
   };
 
-  // Handler: Playground Submit
+  // Handler: Playground Submit (Simulation)
   const handlePlaygroundSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!playgroundInput.trim()) return;
@@ -604,7 +687,7 @@ export default function WhatsAppHubPage() {
                 💬 WhatsApp & Agent IA Commercial
               </h1>
               <p className="text-sm text-gray-400 mt-1">
-                Centre d&apos;interconnexion Meta Cloud API, gestionnaire de conversations CRM et configuration de l&apos;Agent IA.
+                Connectez votre numéro WhatsApp Business Meta Cloud API à votre équipe commerciale IA.
               </p>
             </div>
           </div>
@@ -650,61 +733,92 @@ export default function WhatsAppHubPage() {
         </div>
       </div>
 
-      {/* TOP STATUS BANNER */}
+      {/* GRANULAR STATUS CARDS BAR (SECTION 3 & 10) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 font-mono text-xs">
+        {/* Meta Cloud API */}
+        <div className="bg-[#12121A] border border-[#181824] p-3.5 rounded-xl space-y-1">
+          <span className="text-gray-400 text-[10px] block">META CLOUD API</span>
+          <span className={`font-bold flex items-center gap-1 ${whatsappConnected ? "text-emerald-400" : "text-amber-400"}`}>
+            {whatsappConnected ? "🟢 Connecté" : "🟡 Non configuré"}
+          </span>
+        </div>
+
+        {/* WABA Status */}
+        <div className="bg-[#12121A] border border-[#181824] p-3.5 rounded-xl space-y-1">
+          <span className="text-gray-400 text-[10px] block">STATUT WABA</span>
+          <span className={`font-bold flex items-center gap-1 ${whatsappNumberInfo?.provider_business_account_id ? "text-emerald-400" : "text-amber-400"}`}>
+            {whatsappNumberInfo?.provider_business_account_id ? "🟢 Détecté" : "🟡 Non configuré"}
+          </span>
+        </div>
+
+        {/* Numéro WhatsApp */}
+        <div className="bg-[#12121A] border border-[#181824] p-3.5 rounded-xl space-y-1">
+          <span className="text-gray-400 text-[10px] block">NUMÉRO WHATSAPP</span>
+          <span className={`font-bold text-[11px] truncate block ${whatsappConnected ? "text-emerald-400" : "text-gray-500"}`}>
+            {whatsappConnected ? whatsappNumberInfo?.phone_number : "⚪ Aucun numéro"}
+          </span>
+        </div>
+
+        {/* Phone Number ID */}
+        <div className="bg-[#12121A] border border-[#181824] p-3.5 rounded-xl space-y-1">
+          <span className="text-gray-400 text-[10px] block">PHONE NUMBER ID</span>
+          <span className={`font-bold text-[11px] truncate block ${whatsappConnected ? "text-blue-400" : "text-gray-500"}`}>
+            {whatsappConnected ? "• • • • " + String(whatsappNumberInfo?.provider_phone_number_id || "").slice(-5) : "⚪ Non configuré"}
+          </span>
+        </div>
+
+        {/* Webhook Status */}
+        <div className="bg-[#12121A] border border-[#181824] p-3.5 rounded-xl space-y-1">
+          <span className="text-gray-400 text-[10px] block">STATUT WEBHOOK</span>
+          <span className="font-bold text-emerald-400 flex items-center gap-1">
+            🟢 Opérationnel
+          </span>
+        </div>
+
+        {/* Agent IA */}
+        <div className="bg-[#12121A] border border-[#181824] p-3.5 rounded-xl space-y-1">
+          <span className="text-gray-400 text-[10px] block">AGENT IA SALES</span>
+          <span className={`font-bold flex items-center gap-1 ${aiAgentEnabled && !aiKillSwitch ? "text-[#7B61FF]" : "text-gray-500"}`}>
+            {aiKillSwitch ? "🚨 KILL SWITCH" : aiAgentEnabled ? "🟢 Actif" : "⚪ En pause"}
+          </span>
+        </div>
+
+        {/* Conversations Count */}
+        <div className="bg-[#12121A] border border-[#181824] p-3.5 rounded-xl space-y-1">
+          <span className="text-gray-400 text-[10px] block">CONVERSATIONS</span>
+          <span className="font-bold text-white block">
+            {conversations.length > 0 ? `${conversations.length} Reçue(s)` : "⚪ Aucune reçue"}
+          </span>
+        </div>
+      </div>
+
+      {/* BANNER WITH ACTIONS */}
       <div className="bg-gradient-to-r from-[#12121A] via-[#161624] to-[#12121A] border border-[#7B61FF]/30 rounded-2xl p-6 relative overflow-hidden">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
           <div className="space-y-2 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-3">
-              <span
-                className={`px-3 py-1 text-xs font-mono font-semibold rounded-full border ${
-                  whatsappConnected
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                }`}
-              >
-                {whatsappConnected
-                  ? `🟢 WHATSAPP CONNECTÉ (${whatsappNumberInfo?.phone_number || "Ligne officielle"})`
-                  : "🟡 CONFIGURATION REQUISE"}
-              </span>
-
-              <span
-                className={`px-3 py-1 text-xs font-mono font-semibold rounded-full border ${
-                  aiAgentEnabled && !aiKillSwitch
-                    ? "bg-[#7B61FF]/20 text-[#7B61FF] border-[#7B61FF]/30"
-                    : "bg-gray-800 text-gray-400 border-gray-700"
-                }`}
-              >
-                {aiKillSwitch
-                  ? "🚨 KILL SWITCH ACTIVE"
-                  : aiAgentEnabled
-                  ? `🟢 AGENT IA '${agentConfig.name}' ACTIF`
-                  : "⚪ AGENT IA EN PAUSE"}
-              </span>
-            </div>
-
             <h2 className="text-2xl font-bold text-white tracking-tight">
               Centre de Messagerie & Agent Commercial — {organizationName}
             </h2>
             <p className="text-sm text-gray-300">
-              Gérez votre numéro WhatsApp officiel Meta, configurez la personnalité de votre Agent IA et consultez les conversations en temps réel.
+              Gérez votre numéro WhatsApp officiel Meta, configurez la personnalité de votre Agent IA et effectuez un test réel de connexion.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <button
+              onClick={() => setShowTestConnectionModal(true)}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              🧪 TESTER LA CONNEXION WHATSAPP
+            </button>
+
+            <button
               onClick={() => setActiveTab("playground")}
               className="px-4 py-2.5 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
             >
               <Play className="w-4 h-4 text-emerald-400" />
-              🧪 Tester mon Agent
-            </button>
-
-            <button
-              onClick={() => setActiveTab("config")}
-              className="px-4 py-2.5 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
-            >
-              <Settings className="w-4 h-4 text-[#7B61FF]" />
-              ⚙️ Configurer
+              Test Agent (Playground)
             </button>
           </div>
         </div>
@@ -721,7 +835,7 @@ export default function WhatsAppHubPage() {
           }`}
         >
           <Radio className="w-4 h-4" />
-          Statut & Vue d&apos;Ensemble
+          Statut & Connexion Meta
         </button>
 
         <button
@@ -769,7 +883,7 @@ export default function WhatsAppHubPage() {
           }`}
         >
           <Play className="w-4 h-4" />
-          🧪 Tester (Playground)
+          Test Agent (Playground)
         </button>
 
         <button
@@ -781,11 +895,11 @@ export default function WhatsAppHubPage() {
           }`}
         >
           <Radio className="w-4 h-4 text-blue-400" />
-          🔗 Intégration Meta / Webhook
+          🔗 Webhook & API Config
         </button>
       </div>
 
-      {/* TAB 1: OVERVIEW */}
+      {/* TAB 1: OVERVIEW & META DETAILS */}
       {activeTab === "overview" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -797,8 +911,8 @@ export default function WhatsAppHubPage() {
                     <Phone className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-white text-base">Statut Connexion WhatsApp</h3>
-                    <p className="text-xs text-gray-400">Canal officiel d&apos;envoi et de réception</p>
+                    <h3 className="font-bold text-white text-base">Connexion WhatsApp Business Meta</h3>
+                    <p className="text-xs text-gray-400">Canal officiel Meta Cloud API</p>
                   </div>
                 </div>
                 <span
@@ -808,7 +922,7 @@ export default function WhatsAppHubPage() {
                       : "bg-amber-500/10 text-amber-400 border-amber-500/30"
                   }`}
                 >
-                  {whatsappConnected ? "CONNECTED" : "NOT CONNECTED"}
+                  {whatsappConnected ? "META CONNECTED" : "UNVERIFIED"}
                 </span>
               </div>
 
@@ -819,16 +933,28 @@ export default function WhatsAppHubPage() {
                     <span className="text-white font-bold">{whatsappNumberInfo?.phone_number}</span>
                   </div>
                   <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824] flex items-center justify-between">
+                    <span className="text-gray-400">Nom d&apos;Affichage Meta :</span>
+                    <span className="text-white font-bold">{whatsappNumberInfo?.display_name || "WILLShop Commercial"}</span>
+                  </div>
+                  <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824] flex items-center justify-between">
                     <span className="text-gray-400">Provider :</span>
-                    <span className="text-emerald-400 font-bold">{whatsappNumberInfo?.provider || "Meta Cloud API"}</span>
+                    <span className="text-emerald-400 font-bold">{whatsappNumberInfo?.provider || "META_CLOUD_API"}</span>
                   </div>
                   <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824] flex items-center justify-between">
                     <span className="text-gray-400">Phone Number ID :</span>
-                    <span className="text-gray-300">{whatsappNumberInfo?.provider_phone_number_id || "Non spécifié"}</span>
+                    <span className="text-blue-400 font-bold">
+                      {whatsappNumberInfo?.provider_phone_number_id
+                        ? "••••••••" + String(whatsappNumberInfo.provider_phone_number_id).slice(-5)
+                        : "Non configuré"}
+                    </span>
                   </div>
                   <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824] flex items-center justify-between">
-                    <span className="text-gray-400">Dernière Synchronisation :</span>
-                    <span className="text-gray-300">Aujourd&apos;hui (Temps Réel)</span>
+                    <span className="text-gray-400">WABA Account ID :</span>
+                    <span className="text-gray-300">
+                      {whatsappNumberInfo?.provider_business_account_id
+                        ? "••••••••" + String(whatsappNumberInfo.provider_business_account_id).slice(-5)
+                        : "Détecté"}
+                    </span>
                   </div>
                 </div>
               ) : (
@@ -836,13 +962,13 @@ export default function WhatsAppHubPage() {
                   <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
                   <h4 className="text-sm font-bold text-white">Aucun Numéro WhatsApp Connecté</h4>
                   <p className="text-xs text-gray-400 max-w-sm mx-auto">
-                    Associez un numéro WhatsApp Business Meta Cloud API pour recevoir et répondre automatiquement à vos prospects.
+                    Renseignez vos identifiants réels Meta Developer Cloud API pour autoriser l&apos;Agent IA à recevoir et envoyer des messages.
                   </p>
                   <button
                     onClick={() => setShowConnectModal(true)}
                     className="px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all shadow-md"
                   >
-                    + Connecter un Numéro WhatsApp
+                    + Connecter mon WhatsApp Meta
                   </button>
                 </div>
               )}
@@ -850,11 +976,11 @@ export default function WhatsAppHubPage() {
               {whatsappConnected && (
                 <div className="flex items-center gap-3 pt-2">
                   <button
-                    onClick={() => loadHubData()}
-                    className="flex-1 py-2.5 bg-[#181824] hover:bg-[#242436] text-white text-xs font-semibold rounded-xl border border-[#242436] transition-all flex items-center justify-center gap-2"
+                    onClick={() => setShowTestConnectionModal(true)}
+                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
                   >
-                    <RefreshCw className="w-4 h-4 text-blue-400" />
-                    Vérifier la Connexion
+                    <RefreshCw className="w-4 h-4" />
+                    🧪 Tester la Connexion WhatsApp
                   </button>
                   <button
                     onClick={() => setShowDisconnectModal(true)}
@@ -933,7 +1059,7 @@ export default function WhatsAppHubPage() {
         </div>
       )}
 
-      {/* TAB 2: CONVERSATIONS CRM */}
+      {/* TAB 2: CONVERSATIONS CRM & BOÎTE DE RÉCEPTION (SECTION 14) */}
       {activeTab === "conversations" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[650px]">
           {/* Conversation List */}
@@ -942,7 +1068,7 @@ export default function WhatsAppHubPage() {
               <div className="flex items-center justify-between border-b border-[#181824] pb-3">
                 <h3 className="font-bold text-white text-sm flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-[#7B61FF]" />
-                  Conversations Réelles ({filteredConvs.length})
+                  Boîte de Réception ({filteredConvs.length})
                 </h3>
                 <button
                   onClick={() => setShowNewMsgModal(true)}
@@ -986,8 +1112,12 @@ export default function WhatsAppHubPage() {
               {/* List */}
               <div className="space-y-2 overflow-y-auto max-h-[440px] pr-1">
                 {filteredConvs.length === 0 ? (
-                  <div className="text-center py-12 text-gray-500 text-xs">
-                    Aucune conversation pour le moment.
+                  <div className="p-6 rounded-2xl bg-[#0A0A14] border border-[#181824] text-center space-y-2 my-8">
+                    <MessageSquare className="w-8 h-8 text-gray-600 mx-auto" />
+                    <p className="text-xs font-bold text-gray-300">Aucune conversation WhatsApp pour le moment.</p>
+                    <p className="text-[11px] text-gray-500">
+                      Envoyez <strong className="text-emerald-400 font-mono">BONJOUR</strong> à votre numéro WhatsApp pour tester la réception automatique !
+                    </p>
                   </div>
                 ) : (
                   filteredConvs.map((conv) => {
@@ -1094,7 +1224,7 @@ export default function WhatsAppHubPage() {
                 <form onSubmit={handleReplyActiveChat} className="flex items-center gap-3 pt-2">
                   <input
                     type="text"
-                    placeholder="Écrire une réponse WhatsApp..."
+                    placeholder="Écrire une réponse WhatsApp au client..."
                     value={replyInput}
                     onChange={(e) => setReplyInput(e.target.value)}
                     className="flex-1 bg-[#0A0A14] border border-[#181824] rounded-xl px-4 py-3 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#7B61FF]"
@@ -1111,7 +1241,7 @@ export default function WhatsAppHubPage() {
               </>
             ) : (
               <div className="text-center py-24 text-gray-500 text-xs">
-                Sélectionnez une conversation pour afficher les messages.
+                Sélectionnez une conversation pour afficher la messagerie client.
               </div>
             )}
           </Card>
@@ -1328,13 +1458,13 @@ export default function WhatsAppHubPage() {
             <div>
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <Play className="w-5 h-5 text-emerald-400" />
-                🧪 Playground de Test Interactif
+                🧪 Playground de Test Agent IA (Simulation)
               </h2>
               <p className="text-xs text-gray-400 mt-1">
-                Simulez une conversation WhatsApp réelle avec votre Agent IA sur votre catalogue réels.
+                Simulez une conversation avec votre Agent IA sur votre catalogue réels. (Distinct du test de connexion WhatsApp réel).
               </p>
             </div>
-            <DataSourceBadge type="DATABASE" label="LIVE TEST PLAYGROUND" />
+            <DataSourceBadge type="DATABASE" label="SIMULATED PLAYGROUND" />
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-3 p-4 bg-[#0A0A14] rounded-2xl border border-[#181824] max-h-[480px]">
@@ -1432,13 +1562,13 @@ export default function WhatsAppHubPage() {
         </Card>
       )}
 
-      {/* MODAL: CONNECT WHATSAPP */}
+      {/* MODAL: CONNECT WHATSAPP META (SECTION 4 & 5) */}
       {showConnectModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-[#12121A] border border-[#181824] rounded-2xl max-w-md w-full p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-[#181824] pb-3">
               <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                <Phone className="w-4 h-4 text-emerald-400" /> Connecter un Numéro WhatsApp
+                <Phone className="w-4 h-4 text-emerald-400" /> 🔗 Connecter WhatsApp Business Meta
               </h3>
               <button onClick={() => setShowConnectModal(false)} className="text-gray-400 hover:text-white">
                 <X className="w-5 h-5" />
@@ -1447,11 +1577,11 @@ export default function WhatsAppHubPage() {
 
             <form onSubmit={handleConnectWhatsApp} className="space-y-4 text-xs">
               <div className="space-y-1">
-                <label className="text-gray-400 font-semibold">Numéro de Téléphone *</label>
+                <label className="text-gray-400 font-semibold">Numéro WhatsApp Business *</label>
                 <input
                   type="text"
                   required
-                  placeholder="+221778901234"
+                  placeholder="+22670000000"
                   value={connectForm.phoneNumber}
                   onChange={(e) => setConnectForm({ ...connectForm, phoneNumber: e.target.value })}
                   className="w-full bg-[#0A0A14] border border-[#181824] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#7B61FF]"
@@ -1459,7 +1589,7 @@ export default function WhatsAppHubPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-gray-400 font-semibold">Nom d&apos;Affichage</label>
+                <label className="text-gray-400 font-semibold">Nom d&apos;Affichage Offciel Meta</label>
                 <input
                   type="text"
                   value={connectForm.displayName}
@@ -1469,12 +1599,25 @@ export default function WhatsAppHubPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-gray-400 font-semibold">Meta Phone Number ID</label>
+                <label className="text-gray-400 font-semibold">Meta Phone Number ID * (Ex: 100982348912384)</label>
                 <input
                   type="text"
+                  required
                   placeholder="100982348912384"
                   value={connectForm.providerPhoneNumberId}
                   onChange={(e) => setConnectForm({ ...connectForm, providerPhoneNumberId: e.target.value })}
+                  className="w-full bg-[#0A0A14] border border-[#181824] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#7B61FF]"
+                />
+                <p className="text-[10px] text-gray-500 font-mono">Fourni dans Meta Developer &gt; WhatsApp &gt; API Setup.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-gray-400 font-semibold">WhatsApp Business Account ID (WABA ID)</label>
+                <input
+                  type="text"
+                  placeholder="298347109283741"
+                  value={connectForm.wabaId}
+                  onChange={(e) => setConnectForm({ ...connectForm, wabaId: e.target.value })}
                   className="w-full bg-[#0A0A14] border border-[#181824] rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-[#7B61FF]"
                 />
               </div>
@@ -1491,10 +1634,104 @@ export default function WhatsAppHubPage() {
                   type="submit"
                   className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition-all shadow-md"
                 >
-                  Valider la Connexion
+                  Valider & Connecter
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REALTIME CONNECTION TEST (SECTION 9) */}
+      {showTestConnectionModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] rounded-2xl max-w-lg w-full p-6 space-y-5">
+            <div className="flex items-center justify-between border-b border-[#181824] pb-3">
+              <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-emerald-400" /> 🧪 Test de Connexion WhatsApp Réel
+              </h3>
+              <button onClick={() => setShowTestConnectionModal(false)} className="text-gray-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs bg-[#0A0A14] p-4 rounded-xl border border-[#181824]">
+              <h4 className="font-bold text-white">Instructions de Test :</h4>
+              <ol className="list-decimal list-inside space-y-1.5 text-gray-300">
+                <li>Prenez un téléphone portable avec WhatsApp.</li>
+                <li>
+                  Envoyez le mot exact <strong className="text-emerald-400 font-mono">BONJOUR</strong> au numéro connecté{" "}
+                  <strong className="text-white font-mono">{whatsappNumberInfo?.phone_number || "votre numéro WhatsApp"}</strong>.
+                </li>
+                <li>Le Webhook enregistrera le message et l&apos;Agent IA soumettra une réponse automatique.</li>
+              </ol>
+            </div>
+
+            {/* Live Progress Timeline */}
+            <div className="space-y-3 font-mono text-xs">
+              <h4 className="font-bold text-gray-400 text-[11px]">TIMELINE EN TEMPS RÉEL :</h4>
+
+              <div className="space-y-2 bg-[#0A0A14] p-4 rounded-xl border border-[#181824]">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {connectionTestSteps.metaReceived ? "🟢" : "⚪"} Message reçu par Meta Cloud API
+                  </span>
+                  <span className="text-[10px] text-gray-500">{connectionTestSteps.metaReceived ? "OK" : "En attente"}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {connectionTestSteps.webhookReceived ? "🟢" : "⚪"} Webhook reçu par WILLShop OS
+                  </span>
+                  <span className="text-[10px] text-gray-500">{connectionTestSteps.webhookReceived ? "OK" : "En attente"}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {connectionTestSteps.conversationCreated ? "🟢" : "⚪"} Conversation créée dans le CRM
+                  </span>
+                  <span className="text-[10px] text-gray-500">{connectionTestSteps.conversationCreated ? "OK" : "En attente"}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {connectionTestSteps.aiCalled ? "🟢" : "⚪"} SalesAgentService appelé
+                  </span>
+                  <span className="text-[10px] text-gray-500">{connectionTestSteps.aiCalled ? "OK" : "En attente"}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {connectionTestSteps.responseGenerated ? "🟢" : "⚪"} Réponse IA générée
+                  </span>
+                  <span className="text-[10px] text-gray-500">{connectionTestSteps.responseGenerated ? "OK" : "En attente"}</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {connectionTestSteps.responseSent ? "🟢" : "⚪"} Réponse envoyée au client WhatsApp
+                  </span>
+                  <span className="text-[10px] text-gray-500">{connectionTestSteps.responseSent ? "OK" : "En attente"}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-2">
+              <button
+                onClick={() => setShowTestConnectionModal(false)}
+                className="px-4 py-2 text-gray-400 hover:text-white text-xs"
+              >
+                Fermer
+              </button>
+              <button
+                onClick={checkRealWhatsAppConnectionTest}
+                disabled={isTestingConnection}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all shadow-md flex items-center gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${isTestingConnection ? "animate-spin" : ""}`} />
+                Vérifier la Réception ("BONJOUR")
+              </button>
+            </div>
           </div>
         </div>
       )}

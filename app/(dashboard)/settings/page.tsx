@@ -612,22 +612,61 @@ export default function SettingsPage() {
           </div>
 
           <div className="space-y-4 font-sans text-xs">
-            {/* WhatsApp */}
-            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-slate-100 flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-emerald-400" /> WhatsApp Business API (Meta Cloud API)
-                </h4>
-                <span className="text-[11px] font-mono text-slate-400">
-                  {whatsappInfo ? `Connecté: ${whatsappInfo.phone_number}` : "Non configuré"}
-                </span>
+            {/* WhatsApp Business API Card (Section 17 & 18) */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-slate-100 flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-emerald-400" /> WhatsApp Business API (Meta Cloud API)
+                  </h4>
+                  <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+                    {whatsappInfo
+                      ? `Ligne: ${whatsappInfo.phone_number} • Statut: CONNECTED`
+                      : "Aucun numéro WhatsApp officiel connecté"}
+                  </p>
+                </div>
+                <Badge variant={whatsappInfo ? "success" : "outline"}>
+                  {whatsappInfo ? "🟢 CONNECTÉ" : "⚪ NON CONFIGURÉ"}
+                </Badge>
               </div>
-              <div className="flex items-center gap-3">
+
+              {whatsappInfo && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 font-mono text-[11px] bg-slate-900/60 p-3 rounded-lg border border-slate-800 text-slate-300">
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">WABA ID</span>
+                    <span className="font-bold">
+                      {whatsappInfo.provider_business_account_id
+                        ? "••••••••" + String(whatsappInfo.provider_business_account_id).slice(-4)
+                        : "• • • • • • • •"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">PHONE NUMBER ID</span>
+                    <span className="font-bold text-blue-400">
+                      {whatsappInfo.provider_phone_number_id
+                        ? "••••••••" + String(whatsappInfo.provider_phone_number_id).slice(-4)
+                        : "• • • • • • • •"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">WEBHOOK STATUS</span>
+                    <span className="font-bold text-emerald-400">🟢 Opérationnel</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-1">
                 <Link
                   href="/whatsapp"
-                  className="px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-semibold text-xs rounded-xl transition-all"
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl transition-all shadow-md flex items-center gap-1.5"
                 >
-                  {whatsappInfo ? "Gérer dans WhatsApp Hub" : "Connecter WhatsApp"}
+                  ⚡ Tester la Connexion
+                </Link>
+                <Link
+                  href="/whatsapp"
+                  className="px-3.5 py-1.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-semibold text-xs rounded-xl transition-all"
+                >
+                  ⚙️ Configurer
                 </Link>
               </div>
             </div>

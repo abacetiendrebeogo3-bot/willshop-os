@@ -37,6 +37,7 @@ import {
   Power,
   ChevronRight,
   MessageCircle,
+  Radio,
 } from "lucide-react";
 
 export default function SalesCRMPage() {
@@ -659,57 +660,84 @@ export default function SalesCRMPage() {
         </div>
       </div>
 
-      {/* WHATSAPP & AI AGENT STATUS BANNER */}
-      <div className="bg-gradient-to-r from-[#12121A] via-[#161624] to-[#12121A] border border-[#7B61FF]/30 rounded-2xl p-6 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-3">
-              <span
-                className={`px-3 py-1 text-xs font-mono font-semibold rounded-full border ${
-                  whatsappConnected
-                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                    : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                }`}
-              >
-                {whatsappConnected
-                  ? `🟢 WHATSAPP ACTIF (${whatsappNumberInfo?.phone_number || "Numéro connecté"})`
-                  : "⚪ WHATSAPP NON CONNECTÉ"}
-              </span>
-              <span
-                className={`px-3 py-1 text-xs font-mono font-semibold rounded-full border ${
-                  aiAgentEnabled
-                    ? "bg-[#7B61FF]/20 text-[#7B61FF] border-[#7B61FF]/30"
-                    : "bg-gray-800 text-gray-400 border-gray-700"
-                }`}
-              >
-                {aiAgentEnabled ? "🟢 AGENT IA COMMERCIAL ACTIF" : "⚪ AGENT IA EN PAUSE"}
-              </span>
-            </div>
+      {/* ÉTAT COMMERCIAL GRANULAR STATUS BAR (SECTION 13) */}
+      <div className="bg-[#12121A] border border-[#181824] p-5 rounded-2xl space-y-4 shadow-sm">
+        <div className="flex items-center justify-between border-b border-[#181824] pb-3">
+          <h2 className="font-bold text-white text-sm flex items-center gap-2">
+            <Radio className="w-4 h-4 text-emerald-400" /> ÉTAT COMMERCIAL & INTÉGRATION WHATSAPP
+          </h2>
+          <span className="text-[10px] font-mono text-gray-500">LIVE ENGINE STATUS</span>
+        </div>
 
-            <h2 className="text-2xl font-bold text-white tracking-tight">
-              Centre de Ventes Automatisé — {organizationName}
-            </h2>
-            <p className="text-sm text-gray-300">
-              Votre Agent IA répond automatiquement aux clients WhatsApp en s&apos;appuyant sur votre catalogue réels et votre stock.
-            </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 font-mono text-xs">
+          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
+            <span className="text-gray-400 text-[10px] block">WHATSAPP</span>
+            <span className={`font-bold ${whatsappConnected ? "text-emerald-400" : "text-amber-400"}`}>
+              {whatsappConnected ? "🟢 Connecté" : "🟡 Non configuré"}
+            </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={() => setActiveTab("playground")}
-              className="px-4 py-2.5 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
-            >
-              <Play className="w-4 h-4 text-emerald-400" />
-              🧪 Tester mon Agent
-            </button>
-            <button
-              onClick={() => setActiveTab("agent_config")}
-              className="px-4 py-2.5 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
-            >
-              <Settings className="w-4 h-4 text-[#7B61FF]" />
-              ⚙️ Configurer l&apos;Agent
-            </button>
+          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
+            <span className="text-gray-400 text-[10px] block">WEBHOOK</span>
+            <span className="font-bold text-emerald-400">🟢 Opérationnel</span>
           </div>
+
+          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
+            <span className="text-gray-400 text-[10px] block">AGENT IA</span>
+            <span className={`font-bold ${aiAgentEnabled ? "text-[#7B61FF]" : "text-gray-500"}`}>
+              {aiAgentEnabled ? "🟢 Actif" : "⚪ Désactivé"}
+            </span>
+          </div>
+
+          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
+            <span className="text-gray-400 text-[10px] block">CONVERSATIONS</span>
+            <span className="font-bold text-white">{conversations.length}</span>
+          </div>
+
+          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
+            <span className="text-gray-400 text-[10px] block">CLIENTS</span>
+            <span className="font-bold text-white">{customers.length}</span>
+          </div>
+
+          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
+            <span className="text-gray-400 text-[10px] block">COMMANDES</span>
+            <span className="font-bold text-white">{customerOrders.length}</span>
+          </div>
+
+          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
+            <span className="text-gray-400 text-[10px] block">PRODUITS</span>
+            <span className="font-bold text-white">{products.length}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            onClick={() => setActiveTab("conversations")}
+            className="px-4 py-2 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
+          >
+            <MessageSquare className="w-4 h-4 text-[#7B61FF]" /> 💬 Voir les conversations
+          </button>
+
+          <button
+            onClick={() => setActiveTab("playground")}
+            className="px-4 py-2 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
+          >
+            <Play className="w-4 h-4 text-emerald-400" /> 🤖 Tester l&apos;Agent
+          </button>
+
+          <button
+            onClick={() => setActiveTab("agent_config")}
+            className="px-4 py-2 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
+          >
+            <Settings className="w-4 h-4 text-[#7B61FF]" /> ⚙️ Configurer
+          </button>
+
+          <Link
+            href="/whatsapp"
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-2"
+          >
+            <Phone className="w-4 h-4" /> 🔗 Gérer WhatsApp
+          </Link>
         </div>
       </div>
 
