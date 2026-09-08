@@ -22,6 +22,9 @@ yarn-error.log*
 .env*.local
 .env
 
+# scratch scripts
+/scratch/
+
 # vercel
 .vercel
 

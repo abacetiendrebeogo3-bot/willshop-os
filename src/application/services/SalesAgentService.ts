@@ -1,12 +1,14 @@
 /**
  * WILLShop OS — Sales Agent & Context Engine Service
  * Application Layer.
- * Assembles token-budgeted context & generates AI Sales responses via provider-agnostic IAIGateway.
+ * Assembles token-budgeted context & generates AI Sales responses via IAIGateway and AIToolsRegistry.
  */
 
 import { IAIGateway } from '../../domain/interfaces/IAIGateway';
 import { Customer, Product } from '../../domain/entities/DataCoreEntities';
 import { Message } from '../../domain/entities/WhatsAppCRMEntities';
+import { AIToolsRegistry } from './AIToolsRegistry';
+import { AnthropicAIGateway } from '../../infrastructure/ai/AnthropicAIGateway';
 
 export interface SalesAgentContext {
   customer: Customer;
@@ -28,7 +30,7 @@ export class SalesAgentContextService {
     const customerInfo = `Client: ${customer.fullName} (${customer.phone}) - Statut: ${customer.status}`;
 
     const productsInfo = availableProducts
-      .map((p) => `- ${p.name} (SKU: ${p.sku}): ${p.sellingPrice} XOF (Prix fixe)`)
+      .map((p) => `- ID: ${p.id} | ${p.name} (SKU: ${p.sku}): ${p.sellingPrice} XOF (Prix fixe)` )
       .join('\n');
 
     const historyInfo = recentMessages
@@ -46,7 +48,6 @@ ${productsInfo}
 ${historyInfo}
 `;
 
-    // Truncate to token budget if exceeded
     return rawContext.substring(0, tokenBudget * 4);
   }
 }
@@ -54,21 +55,27 @@ ${historyInfo}
 export class SalesAgentService {
   constructor(
     private readonly aiGateway: IAIGateway,
-    private readonly contextService: SalesAgentContextService
+    private readonly contextService: SalesAgentContextService,
+    private readonly toolsRegistry?: AIToolsRegistry
   ) {}
 
   async generateResponse(
     customer: Customer,
     recentMessages: Message[],
-    availableProducts: Product[]
+    availableProducts: Product[],
+    organizationId?: string
   ): Promise<{ responseText: string; triggerHandoff: boolean; confidence: number }> {
     const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts);
 
     const lastMessage = recentMessages[recentMessages.length - 1];
     const userMessageContent = lastMessage ? lastMessage.content || '' : '';
 
-    // Check for human handoff keywords
-    if (userMessageContent.toLowerCase().includes('humain') || userMessageContent.toLowerCase().includes('agent') || userMessageContent.toLowerCase().includes('remboursement')) {
+    // Check for human handoff keywords directly
+    if (
+      userMessageContent.toLowerCase().includes('humain') ||
+      userMessageContent.toLowerCase().includes('agent') ||
+      userMessageContent.toLowerCase().includes('remboursement')
+    ) {
       return {
         responseText: "Je vous mets immédiatement en relation avec un conseiller commercial humain de l'équipe WillShop.",
         triggerHandoff: true,
@@ -76,24 +83,44 @@ export class SalesAgentService {
       };
     }
 
-    const result = await this.aiGateway.generateCompletion({
+    const toolDefs = AIToolsRegistry.getToolDefinitions();
+
+    const result = await (this.aiGateway as AnthropicAIGateway).generateCompletion({
       agentName: 'Sales AI',
       messages: [
         {
           role: 'system',
-          content: 'Tu es l Agent Commercial de WillShop. Réponds poliment et présente les produits avec leurs prix exacts. Ne jamais inventer de prix ni de stock.',
+          content: `Tu es l Agent Commercial Virtuel de WillShop. Tu réponds de manière courtoise, chaleureuse et professionnelle.
+REGLES ABSOLUES :
+1. Présente toujours les produits avec leurs prix exacts du catalogue.
+2. Ne jamais inventer de prix ni de stock.
+3. Si le client veut commander ou demande le statut d'une commande, utilise les outils mis à ta disposition.
+4. Si le client demande un conseiller humain, réponds poliment et utilise l'outil escalate_to_human.`,
         },
         {
           role: 'user',
           content: `${contextPrompt}\n\nMessage client: ${userMessageContent}`,
         },
       ],
-      maxTokens: 300,
+      tools: toolDefs,
+      maxTokens: 400,
     });
 
+    let triggerHandoff = false;
+
+    // Handle tool execution if LLM requested a tool call
+    if (result.toolCalls && result.toolCalls.length > 0 && this.toolsRegistry && organizationId) {
+      for (const toolCall of result.toolCalls) {
+        const execRes = await this.toolsRegistry.executeTool(toolCall.name, toolCall.input, organizationId);
+        if (execRes.triggerHandoff) {
+          triggerHandoff = true;
+        }
+      }
+    }
+
     return {
-      responseText: result.content,
-      triggerHandoff: false,
+      responseText: result.content || "Merci pour votre message ! Un conseiller est à votre disposition.",
+      triggerHandoff,
       confidence: 0.95,
     };
   }
