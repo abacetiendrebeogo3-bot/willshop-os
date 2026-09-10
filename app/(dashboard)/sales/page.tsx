@@ -94,15 +94,45 @@ export default function SalesCRMPage() {
   const [replyInput, setReplyInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Agent Config state
+  // Agent Config state (Full 6 Sections)
   const [agentConfig, setAgentConfig] = useState({
     name: "Sales AI WILLShop",
+    presentation: "Assistant commercial virtuel dédié à votre écoute 24/7.",
     tone: "Professionnel & Chaleureux",
+    style: "Vouvoiement respectueux",
     language: "Français",
-    style: "Vouvoiement",
-    objective: "Qualifier les besoins, présenter les produits et convertir les prospects",
-    businessRules: "Ne jamais inventer de prix ni de stock. Demander confirmation avant action sensible.",
-    escalationRules: "Transférer vers un humain si le client demande un conseiller ou un remboursement.",
+    formality: "SOUTENU",
+    mission: {
+      reply_prospects: true,
+      show_products: true,
+      search_products: true,
+      check_stock: true,
+      check_price: true,
+      check_delivery_zones: true,
+      qualify_prospects: true,
+      take_orders: true,
+      track_orders: true,
+    },
+    rules: {
+      no_invent_price: true,
+      no_invent_stock: true,
+      no_invent_orders: true,
+      no_invent_delivery: true,
+      no_invent_payment: true,
+      no_unfounded_promises: true,
+      escalate_on_human_request: true,
+    },
+    schedule: {
+      active: true,
+      startTime: "08:00",
+      endTime: "20:00",
+      timezone: "Africa/Ouagadougou",
+    },
+    escalation: {
+      conditions: "Client demande un agent humain ou réclame un remboursement",
+      responsible: "Commercial d astreinte",
+      notification: "WhatsApp & E-mail",
+    },
   });
 
   // Playground state
@@ -327,6 +357,26 @@ export default function SalesCRMPage() {
       loadMessagesForConv(selectedConv.id);
     }
   }, [selectedConv]);
+
+  // Handler: Toggle Conversation Mode (AI_ACTIVE <-> HUMAN_ACTIVE)
+  const handleToggleConvMode = async (convId: string, currentMode: string) => {
+    const nextMode = currentMode === "AI_ACTIVE" ? "HUMAN_ACTIVE" : "AI_ACTIVE";
+    try {
+      const supabase = createClient();
+      await supabase
+        .from("conversations")
+        .update({ conversation_mode: nextMode, assigned_agent: nextMode === "AI_ACTIVE" ? "SALES_AI" : "HUMAN" })
+        .eq("id", convId);
+
+      showToast(nextMode === "AI_ACTIVE" ? "🟢 Agent IA réactivé pour cette discussion" : "👤 Main prise par le commercial humain");
+      await loadCRMData();
+      if (selectedConv?.id === convId) {
+        setSelectedConv((prev: any) => ({ ...prev, conversationMode: nextMode }));
+      }
+    } catch (err: any) {
+      alert(`Erreur bascule mode: ${err.message}`);
+    }
+  };
 
   // Handler: Toggle AI Agent ON / OFF
   const handleToggleAiAgent = async () => {
@@ -780,23 +830,23 @@ export default function SalesCRMPage() {
         </div>
       </div>
 
-      {/* NAVIGATION TABS */}
+      {/* NAVIGATION TABS & SUB-NAV (SECTION 10) */}
       <div className="flex items-center gap-2 border-b border-[#181824] pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab("conversations")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "conversations"
               ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
           }`}
         >
           <MessageSquare className="w-4 h-4" />
-          Conversations WhatsApp ({conversations.length})
+          Conversations ({conversations.length})
         </button>
 
         <button
           onClick={() => setActiveTab("customers")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "customers"
               ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
@@ -806,28 +856,60 @@ export default function SalesCRMPage() {
           Clients CRM ({customers.length})
         </button>
 
+        <Link
+          href="/orders"
+          className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all text-gray-400 hover:text-white hover:bg-[#12121A] whitespace-nowrap"
+        >
+          <ShoppingBag className="w-4 h-4 text-emerald-400" />
+          Commandes
+        </Link>
+
+        <Link
+          href="/sales/followups"
+          className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all text-gray-400 hover:text-white hover:bg-[#12121A] whitespace-nowrap"
+        >
+          <TrendingUp className="w-4 h-4 text-amber-400" />
+          Relances (Dry Run)
+        </Link>
+
+        <Link
+          href="/delivery"
+          className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all text-gray-400 hover:text-white hover:bg-[#12121A] whitespace-nowrap"
+        >
+          <Package className="w-4 h-4 text-blue-400" />
+          Livraisons
+        </Link>
+
+        <Link
+          href="/whatsapp"
+          className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all text-gray-400 hover:text-white hover:bg-[#12121A] whitespace-nowrap"
+        >
+          <Phone className="w-4 h-4 text-emerald-400" />
+          WhatsApp Hub
+        </Link>
+
         <button
           onClick={() => setActiveTab("agent_config")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "agent_config"
               ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
           }`}
         >
           <Settings className="w-4 h-4" />
-          Configuration Agent IA
+          Agent IA Config
         </button>
 
         <button
           onClick={() => setActiveTab("playground")}
-          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-xl transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "playground"
               ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
           }`}
         >
           <Play className="w-4 h-4" />
-          🧪 Tester l&apos;Agent (Playground)
+          🧪 Playground IA
         </button>
       </div>
 
@@ -899,6 +981,36 @@ export default function SalesCRMPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono ${
+                        selectedConv.conversationMode === "HUMAN_ACTIVE"
+                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/30"
+                          : selectedConv.conversationMode === "ESCALATED"
+                          ? "bg-red-500/10 text-red-400 border border-red-500/30"
+                          : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                      }`}
+                    >
+                      {selectedConv.conversationMode || "AI_ACTIVE"}
+                    </span>
+
+                    {selectedConv.conversationMode === "HUMAN_ACTIVE" ? (
+                      <button
+                        onClick={() => handleToggleConvMode(selectedConv.id, selectedConv.conversationMode)}
+                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <Bot className="w-3.5 h-3.5" />
+                        Reprendre avec l&apos;IA
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleToggleConvMode(selectedConv.id, selectedConv.conversationMode)}
+                        className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        Prendre la main
+                      </button>
+                    )}
+
                     <button
                       onClick={handleTriggerAiResponse}
                       disabled={isSending}
@@ -1162,78 +1274,196 @@ export default function SalesCRMPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSaveAgentConfig} className="space-y-5">
+          <form onSubmit={handleSaveAgentConfig} className="space-y-6 text-xs">
+            {/* SECTION 1: IDENTITÉ */}
+            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
+              <h3 className="font-bold text-sm text-[#7B61FF] flex items-center gap-2">
+                1. IDENTITÉ DE L&apos;AGENT
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-300 mb-1">Nom de l&apos;Agent IA</label>
+                  <input
+                    type="text"
+                    value={agentConfig.name}
+                    onChange={(e) => setAgentConfig({ ...agentConfig, name: e.target.value })}
+                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#7B61FF]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Présentation / Pitch</label>
+                  <input
+                    type="text"
+                    value={agentConfig.presentation}
+                    onChange={(e) => setAgentConfig({ ...agentConfig, presentation: e.target.value })}
+                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#7B61FF]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 2: COMMUNICATION */}
+            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
+              <h3 className="font-bold text-sm text-[#7B61FF] flex items-center gap-2">
+                2. COMMUNICATION & STYLE
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-gray-300 mb-1">Ton</label>
+                  <select
+                    value={agentConfig.tone}
+                    onChange={(e) => setAgentConfig({ ...agentConfig, tone: e.target.value })}
+                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
+                  >
+                    <option value="Professionnel & Chaleureux">Professionnel & Chaleureux</option>
+                    <option value="Direct & Efficace">Direct & Efficace</option>
+                    <option value="Enthousiaste & Commercial">Enthousiaste & Commercial</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Langue</label>
+                  <select
+                    value={agentConfig.language}
+                    onChange={(e) => setAgentConfig({ ...agentConfig, language: e.target.value })}
+                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
+                  >
+                    <option value="Français">Français</option>
+                    <option value="Français & Mooré">Français & Mooré</option>
+                    <option value="Français & Dioula">Français & Dioula</option>
+                    <option value="Anglais">Anglais</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Style</label>
+                  <input
+                    type="text"
+                    value={agentConfig.style}
+                    onChange={(e) => setAgentConfig({ ...agentConfig, style: e.target.value })}
+                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Formalité</label>
+                  <select
+                    value={agentConfig.formality}
+                    onChange={(e) => setAgentConfig({ ...agentConfig, formality: e.target.value })}
+                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
+                  >
+                    <option value="SOUTENU">Vouvoiement (Soutenu)</option>
+                    <option value="ACCUEILLANT">Vouvoiement (Chaleureux)</option>
+                    <option value="TUTOIEMENT">Tutoiement (Convivial)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 3: MISSION */}
+            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
+              <h3 className="font-bold text-sm text-[#7B61FF]">3. PERMISSIONS & MISSIONS DE L&apos;AGENT</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono text-[11px]">
+                {Object.entries(agentConfig.mission || {}).map(([key, val]) => (
+                  <label key={key} className="flex items-center gap-2 bg-[#12121A] p-2.5 rounded-lg border border-[#181824] text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!val}
+                      onChange={(e) =>
+                        setAgentConfig({
+                          ...agentConfig,
+                          mission: { ...agentConfig.mission, [key]: e.target.checked },
+                        })
+                      }
+                      className="accent-[#7B61FF]"
+                    />
+                    <span>{key.replace(/_/g, " ")}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* SECTION 4: RÈGLES STRICTES */}
+            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
+              <h3 className="font-bold text-sm text-[#7B61FF]">4. RÈGLES DE SÉCURITÉ & ANTI-FAUX</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px]">
+                {Object.entries(agentConfig.rules || {}).map(([key, val]) => (
+                  <label key={key} className="flex items-center gap-2 bg-[#12121A] p-2.5 rounded-lg border border-[#181824] text-emerald-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!val}
+                      onChange={(e) =>
+                        setAgentConfig({
+                          ...agentConfig,
+                          rules: { ...agentConfig.rules, [key]: e.target.checked },
+                        })
+                      }
+                      className="accent-emerald-500"
+                    />
+                    <span>{key.replace(/_/g, " ")}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* SECTION 5 & 6: HORAIRES & ESCALADE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  Nom de l&apos;Agent IA
-                </label>
-                <input
-                  type="text"
-                  value={agentConfig.name}
-                  onChange={(e) => setAgentConfig({ ...agentConfig, name: e.target.value })}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
-                />
+              <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
+                <h3 className="font-bold text-sm text-[#7B61FF]">5. HORAIRES DE SERVICE</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-gray-400 text-[10px] mb-1">Début</label>
+                    <input
+                      type="time"
+                      value={agentConfig.schedule?.startTime || "08:00"}
+                      onChange={(e) =>
+                        setAgentConfig({
+                          ...agentConfig,
+                          schedule: { ...agentConfig.schedule, startTime: e.target.value },
+                        })
+                      }
+                      className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-400 text-[10px] mb-1">Fin</label>
+                    <input
+                      type="time"
+                      value={agentConfig.schedule?.endTime || "20:00"}
+                      onChange={(e) =>
+                        setAgentConfig({
+                          ...agentConfig,
+                          schedule: { ...agentConfig.schedule, endTime: e.target.value },
+                        })
+                      }
+                      className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-2 text-white"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  Ton de communication
-                </label>
-                <select
-                  value={agentConfig.tone}
-                  onChange={(e) => setAgentConfig({ ...agentConfig, tone: e.target.value })}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
-                >
-                  <option value="Professionnel & Chaleureux">Professionnel & Chaleureux</option>
-                  <option value="Direct & Efficace">Direct & Efficace</option>
-                  <option value="Enthousiaste & Dynamique">Enthousiaste & Dynamique</option>
-                </select>
+              <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
+                <h3 className="font-bold text-sm text-[#7B61FF]">6. ESCALADE HUMAINE</h3>
+                <div>
+                  <label className="block text-gray-400 text-[10px] mb-1">Conditions de transfert</label>
+                  <input
+                    type="text"
+                    value={agentConfig.escalation?.conditions || ""}
+                    onChange={(e) =>
+                      setAgentConfig({
+                        ...agentConfig,
+                        escalation: { ...agentConfig.escalation, conditions: e.target.value },
+                      })
+                    }
+                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-2 text-white"
+                  />
+                </div>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
-                Objectif Commercial Principal
-              </label>
-              <textarea
-                rows={2}
-                value={agentConfig.objective}
-                onChange={(e) => setAgentConfig({ ...agentConfig, objective: e.target.value })}
-                className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
-                Règles Commerciales Strictes (Prix & Stocks)
-              </label>
-              <textarea
-                rows={2}
-                value={agentConfig.businessRules}
-                onChange={(e) => setAgentConfig({ ...agentConfig, businessRules: e.target.value })}
-                className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-300 mb-1">
-                Règles d&apos;Escalade Humaine
-              </label>
-              <textarea
-                rows={2}
-                value={agentConfig.escalationRules}
-                onChange={(e) => setAgentConfig({ ...agentConfig, escalationRules: e.target.value })}
-                className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
-              />
             </div>
 
             <div className="flex justify-end pt-4 border-t border-[#181824]">
               <button
                 type="submit"
-                className="px-6 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-medium rounded-xl text-xs transition-all shadow-md"
+                className="px-6 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-bold rounded-xl text-xs transition-all shadow-lg"
               >
-                Sauvegarder la configuration
+                💾 Enregistrer la Configuration Réelle
               </button>
             </div>
           </form>
