@@ -125,18 +125,6 @@ export default function WhatsAppHubPage() {
         }
       }
 
-      if (!targetOrgId) {
-        const { data: fallbackOrgs } = await supabase
-          .from("organizations")
-          .select("id, name, settings")
-          .limit(1);
-
-        if (fallbackOrgs && fallbackOrgs.length > 0) {
-          targetOrgId = fallbackOrgs[0].id;
-          targetOrgName = fallbackOrgs[0].name;
-        }
-      }
-
       setOrganizationId(targetOrgId);
       setOrganizationName(targetOrgName);
 

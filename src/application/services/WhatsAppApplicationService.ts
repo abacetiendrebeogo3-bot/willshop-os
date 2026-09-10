@@ -38,8 +38,10 @@ export class WhatsAppApplicationService {
     const { data: numRow } = await this.supabase
       .from('whatsapp_numbers')
       .select('organization_id, id, phone_number')
-      .or(`provider_identity.eq.${providerIdentity},provider_phone_number_id.eq.${providerIdentity}`)
+      .or(`provider_identity.eq.${providerIdentity},provider_phone_number_id.eq.${providerIdentity},phone_number.eq.${providerIdentity}`)
       .eq('status', 'ACTIVE')
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (!numRow || !numRow.organization_id) {
@@ -270,6 +272,12 @@ export class WhatsAppApplicationService {
       updatedAt: new Date(),
     };
 
+    const { data: orgData } = await this.supabase
+      .from('organizations')
+      .select('settings')
+      .eq('id', targetOrgId)
+      .single();
+
     const aiGateway = new AnthropicAIGateway();
     const contextService = new SalesAgentContextService();
     const salesAgentService = new SalesAgentService(aiGateway, contextService);
@@ -278,7 +286,8 @@ export class WhatsAppApplicationService {
       mockCustomer,
       mappedMsgs,
       availableProducts,
-      targetOrgId
+      targetOrgId,
+      orgData?.settings?.ai_agent_config
     );
 
     // 9. Save Outbound AI Response

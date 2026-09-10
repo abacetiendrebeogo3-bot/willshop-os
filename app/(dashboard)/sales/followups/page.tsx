@@ -99,18 +99,6 @@ export default function FollowupsPage() {
         }
       }
 
-      if (!targetOrgId) {
-        const { data: fallbackOrgs } = await supabase
-          .from("organizations")
-          .select("id, name")
-          .limit(1);
-
-        if (fallbackOrgs && fallbackOrgs.length > 0) {
-          targetOrgId = fallbackOrgs[0].id;
-          setOrganizationName(fallbackOrgs[0].name);
-        }
-      }
-
       setOrganizationId(targetOrgId);
 
       if (!targetOrgId) return;

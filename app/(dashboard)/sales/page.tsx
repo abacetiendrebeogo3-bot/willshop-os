@@ -94,10 +94,11 @@ export default function SalesCRMPage() {
   const [replyInput, setReplyInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Agent Config state (Full 6 Sections)
+  // Agent Config state (Full 6 Sections + Custom Instructions)
   const [agentConfig, setAgentConfig] = useState({
     name: "Sales AI WILLShop",
     presentation: "Assistant commercial virtuel dédié à votre écoute 24/7.",
+    custom_instructions: "Tu es l'assistant commercial virtuel de WILLShop OS. Réponds avec courtoisie et professionnalisme.",
     tone: "Professionnel & Chaleureux",
     style: "Vouvoiement respectueux",
     language: "Français",
@@ -185,24 +186,20 @@ export default function SalesCRMPage() {
           if (org) {
             targetOrgName = org.name;
             if (org.settings?.ai_agent_config) {
-              setAgentConfig(org.settings.ai_agent_config);
+              const loadedCfg = org.settings.ai_agent_config;
+              setAgentConfig((prev) => ({
+                ...prev,
+                ...loadedCfg,
+                mission: { ...prev.mission, ...(loadedCfg.mission || {}) },
+                rules: { ...prev.rules, ...(loadedCfg.rules || {}) },
+                schedule: { ...prev.schedule, ...(loadedCfg.schedule || {}) },
+                escalation: { ...prev.escalation, ...(loadedCfg.escalation || {}) },
+              }));
             }
             if (org.settings?.ai_agent_enabled !== undefined) {
               setAiAgentEnabled(org.settings.ai_agent_enabled);
             }
           }
-        }
-      }
-
-      if (!targetOrgId) {
-        const { data: fallbackOrgs } = await supabase
-          .from("organizations")
-          .select("id, name, settings")
-          .limit(1);
-
-        if (fallbackOrgs && fallbackOrgs.length > 0) {
-          targetOrgId = fallbackOrgs[0].id;
-          targetOrgName = fallbackOrgs[0].name;
         }
       }
 
@@ -503,35 +500,34 @@ export default function SalesCRMPage() {
     }
   };
 
-  // Handler: Send Outbound Message
+  // Handler: Send Outbound Message via Real Evolution API Endpoint
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedConv || !replyInput.trim() || !organizationId) return;
     setIsSending(true);
 
     try {
-      const supabase = createClient();
-      const payload = {
-        organization_id: organizationId,
-        conversation_id: selectedConv.id,
-        customer_id: selectedConv.customerId || null,
-        direction: "OUTBOUND",
-        sender_type: "HUMAN",
-        sender_id: "conseiller",
-        message_type: "TEXT",
-        content: replyInput.trim(),
-        status: "SENT",
-      };
+      const res = await fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: selectedConv.id,
+          text: replyInput.trim(),
+        }),
+      });
 
-      const { error } = await supabase.from("messages").insert(payload);
-      if (error) throw error;
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(`Échec de l'envoi WhatsApp réel : ${data.error || "Erreur serveur"}`);
+        return;
+      }
 
       setReplyInput("");
       await loadMessagesForConv(selectedConv.id);
-      showToast("💬 Message WhatsApp envoyé au client !");
+      showToast("💬 Message WhatsApp réel envoyé au client !");
     } catch (err: any) {
       console.error("Error sending message:", err);
-      alert(`Erreur d'envoi: ${err.message}`);
+      alert(`Erreur d'envoi WhatsApp: ${err.message}`);
     } finally {
       setIsSending(false);
     }
@@ -599,7 +595,7 @@ export default function SalesCRMPage() {
     }
   };
 
-  // Handler: Playground Chat Test
+  // Handler: Real Backend Anthropic AI Playground Chat Test
   const handlePlaygroundSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!playgroundInput.trim()) return;
@@ -611,28 +607,48 @@ export default function SalesCRMPage() {
     setPlaygroundInput("");
     setIsPlaygroundThinking(true);
 
-    setTimeout(() => {
-      let reply = "";
-      const lower = userText.toLowerCase();
+    try {
+      const res = await fetch("/api/whatsapp/agent/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageText: userText }),
+      });
 
-      if (lower.includes("bonjour") || lower.includes("salut")) {
-        reply = `Bonjour ! Je suis l'Agent IA Commercial de ${organizationName}. Comment puis-je vous aider aujourd'hui ?`;
-      } else if (lower.includes("prix") || lower.includes("produit") || lower.includes("catalogue") || lower.includes("stock")) {
-        if (products.length > 0) {
-          const list = products.slice(0, 3).map((p) => `- ${p.name}: ${Number(p.selling_price || 0).toLocaleString()} XOF (Stock: ${p.stock_quantity || 0})`).join("\n");
-          reply = `Voici quelques articles de notre catalogue réels :\n${list}\n\nTous nos prix sont réels. Souhaitez-vous réserver un article ?`;
-        } else {
-          reply = `Nous n'avons actuellement aucun produit en catalogue. Rendez-vous dans la section Produits & Stock pour ajouter des articles réels !`;
-        }
-      } else if (lower.includes("commander") || lower.includes("acheter")) {
-        reply = `Excellente initiative ! Indiquez-moi le produit et votre adresse de livraison. Je procéderai à la réservation du stock et à l'enregistrement de votre commande.`;
-      } else {
-        reply = `Je réponds selon la configuration de votre Agent IA (${agentConfig.tone}). Toutes les données de réponses sont extraites de Supabase sans aucune donnée fictive.`;
+      const data = await res.json();
+      const replyTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      if (!res.ok || data.error) {
+        setPlaygroundMsgs((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `⚠️ Agent IA non configuré — ${data.error || "Clé ANTHROPIC_API_KEY manquante dans Vercel."}`,
+            time: replyTime,
+          },
+        ]);
+        return;
       }
 
-      setPlaygroundMsgs((prev) => [...prev, { role: "assistant", content: reply, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }]);
+      setPlaygroundMsgs((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: data.responseText || "L'Agent IA a traité votre message.",
+          time: replyTime,
+        },
+      ]);
+    } catch (err: any) {
+      setPlaygroundMsgs((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `⚠️ Erreur de communication avec l'Agent IA : ${err.message}`,
+          time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } finally {
       setIsPlaygroundThinking(false);
-    }, 800);
+    }
   };
 
   return (
@@ -1275,10 +1291,10 @@ export default function SalesCRMPage() {
           </div>
 
           <form onSubmit={handleSaveAgentConfig} className="space-y-6 text-xs">
-            {/* SECTION 1: IDENTITÉ */}
+            {/* SECTION 1: IDENTITÉ & INSTRUCTIONS */}
             <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
               <h3 className="font-bold text-sm text-[#7B61FF] flex items-center gap-2">
-                1. IDENTITÉ DE L&apos;AGENT
+                1. IDENTITÉ & INSTRUCTIONS PERSONNALISÉES
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -1299,6 +1315,19 @@ export default function SalesCRMPage() {
                     className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#7B61FF]"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-1 font-bold text-emerald-400">
+                  📝 Instructions supplémentaires de l&apos;Agent (Injectées dans le prompt réels)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="ex: Tu es Wilfried, l'assistant commercial virtuel de WillShop. Réponds de façon très courtoise et propose toujours nos offres promotionnelles du moment..."
+                  value={(agentConfig as any).custom_instructions || ""}
+                  onChange={(e) => setAgentConfig({ ...agentConfig, custom_instructions: e.target.value } as any)}
+                  className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-3 text-white focus:outline-none focus:border-[#7B61FF]"
+                />
               </div>
             </div>
 

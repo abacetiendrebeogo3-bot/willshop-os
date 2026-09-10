@@ -63,7 +63,8 @@ export class SalesAgentService {
     customer: Customer,
     recentMessages: Message[],
     availableProducts: Product[],
-    organizationId?: string
+    organizationId?: string,
+    aiAgentConfig?: any
   ): Promise<{ responseText: string; triggerHandoff: boolean; confidence: number }> {
     const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts);
 
@@ -85,17 +86,25 @@ export class SalesAgentService {
 
     const toolDefs = AIToolsRegistry.getToolDefinitions();
 
-    const result = await (this.aiGateway as AnthropicAIGateway).generateCompletion({
-      agentName: 'Sales AI',
-      messages: [
-        {
-          role: 'system',
-          content: `Tu es l Agent Commercial Virtuel de WillShop. Tu réponds de manière courtoise, chaleureuse et professionnelle.
+    const agentName = aiAgentConfig?.name || 'Sales AI WILLShop';
+    const agentTone = aiAgentConfig?.tone || 'Professionnel & Chaleureux';
+    const customInstructions = aiAgentConfig?.custom_instructions || aiAgentConfig?.presentation || '';
+
+    const systemPrompt = `Tu es ${agentName}, l'Agent Commercial Virtuel de WILLShop OS.
+Ton de communication : ${agentTone}.
+${customInstructions ? `INSTRUCTIONS PARTICULIÈRES :\n${customInstructions}\n` : ''}
 REGLES ABSOLUES :
 1. Présente toujours les produits avec leurs prix exacts du catalogue.
 2. Ne jamais inventer de prix ni de stock.
 3. Si le client veut commander ou demande le statut d'une commande, utilise les outils mis à ta disposition.
-4. Si le client demande un conseiller humain, réponds poliment et utilise l'outil escalate_to_human.`,
+4. Si le client demande un conseiller humain, réponds poliment et utilise l'outil escalate_to_human.`;
+
+    const result = await (this.aiGateway as AnthropicAIGateway).generateCompletion({
+      agentName,
+      messages: [
+        {
+          role: 'system',
+          content: systemPrompt,
         },
         {
           role: 'user',

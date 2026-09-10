@@ -28,10 +28,20 @@ export default function DeliveryManagementPage() {
   const [loading, setLoading] = useState(true);
   const [organizationId, setOrganizationId] = useState<string>("");
 
-  // Modal State for Driver Assignment
+  // Modal State for Driver Assignment & Creation
   const [showAssignModal, setShowAssignModal] = useState<boolean>(false);
+  const [showCreateDriverModal, setShowCreateDriverModal] = useState<boolean>(false);
   const [selectedDelivery, setSelectedDelivery] = useState<any | null>(null);
   const [selectedDriverId, setSelectedDriverId] = useState<string>("");
+
+  // Form State for Driver Creation
+  const [driverForm, setDriverForm] = useState({
+    name: "",
+    phone: "",
+    vehicle: "MOTO",
+    status: "ACTIVE",
+    notes: "",
+  });
 
   // Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -124,6 +134,45 @@ export default function DeliveryManagementPage() {
     }
   };
 
+  // Create New Driver via API
+  const handleCreateDriver = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!driverForm.name.trim()) return;
+
+    try {
+      const res = await fetch("/api/delivery/drivers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(driverForm),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(`Échec de création du livreur : ${data.error || "Erreur serveur"}`);
+        return;
+      }
+
+      showToast(`🚴 Livreur '${driverForm.name}' créé avec succès !`);
+      setShowCreateDriverModal(false);
+      setDriverForm({
+        name: "",
+        phone: "",
+        vehicle: "MOTO",
+        status: "ACTIVE",
+        notes: "",
+      });
+
+      await loadDeliveryData();
+
+      // If assigning modal was active, select newly created driver
+      if (data.driver?.id) {
+        setSelectedDriverId(data.driver.id);
+      }
+    } catch (err: any) {
+      alert(`Erreur de création livreur: ${err.message}`);
+    }
+  };
+
   // Update Delivery Workflow Status
   const handleUpdateStatus = async (deliveryId: string, nextStatus: string) => {
     if (!organizationId) return;
@@ -179,6 +228,13 @@ export default function DeliveryManagementPage() {
 
         <div className="flex items-center gap-3">
           <DataSourceBadge type={deliveries.length > 0 ? "DATABASE" : "EMPTY_STATE"} label="DELIVERY SSOT" />
+          <button
+            onClick={() => setShowCreateDriverModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-medium rounded-xl transition-all shadow-md text-xs"
+          >
+            <Plus className="w-4 h-4" />
+            Ajouter un livreur
+          </button>
           <Button variant="outline" size="sm" onClick={loadDeliveryData}>
             <RefreshCw className="w-4 h-4 mr-2" /> Actualiser
           </Button>
@@ -226,17 +282,62 @@ export default function DeliveryManagementPage() {
             <Truck className="w-4 h-4 text-[#7B61FF]" />
           </div>
           <p className="text-3xl font-extrabold text-white mt-1 font-mono">
-            {drivers.filter((drv) => drv.status === "ACTIVE").length} / {drivers.length}
+            {drivers.filter((drv) => drv.status === "ACTIVE" || drv.status === "AVAILABLE").length} / {drivers.length}
           </p>
           <p className="text-[11px] text-gray-400 mt-1">Livreurs enregistrés</p>
         </Card>
+      </div>
+
+      {/* DRIVERS ROSTER LIST */}
+      <div className="bg-[#12121A] border border-[#181824] rounded-2xl p-6 space-y-4">
+        <div className="flex items-center justify-between border-b border-[#181824] pb-3">
+          <h2 className="font-semibold text-white text-sm flex items-center gap-2">
+            <UserCheck className="w-4 h-4 text-[#7B61FF]" /> Flotte de Livreurs de l&apos;Organisation
+          </h2>
+          <button
+            onClick={() => setShowCreateDriverModal(true)}
+            className="text-xs text-[#7B61FF] hover:underline font-bold flex items-center gap-1"
+          >
+            <Plus className="w-3.5 h-3.5" /> + Créer un livreur
+          </button>
+        </div>
+
+        {drivers.length === 0 ? (
+          <div className="p-6 bg-[#0A0A14] border border-amber-500/30 rounded-xl text-center space-y-3">
+            <p className="text-xs text-amber-300 font-bold">⚠️ Aucun livreur enregistré dans votre organisation</p>
+            <p className="text-[11px] text-gray-400">
+              Vous devez créer au moins un livreur pour pouvoir assigner les livraisons en attente.
+            </p>
+            <button
+              onClick={() => setShowCreateDriverModal(true)}
+              className="px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-bold text-xs rounded-xl shadow-lg"
+            >
+              + Créer mon premier livreur
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 font-mono text-xs">
+            {drivers.map((drv) => (
+              <div key={drv.id} className="bg-[#0A0A14] border border-[#242436] p-4 rounded-xl space-y-1">
+                <div className="flex items-center justify-between font-bold text-white">
+                  <span>🚴 {drv.name}</span>
+                  <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-md text-[10px]">
+                    {drv.status || "ACTIVE"}
+                  </span>
+                </div>
+                <p className="text-gray-400 text-[11px]">📞 {drv.phone_number || drv.phone || "Sans téléphone"}</p>
+                <p className="text-gray-500 text-[10px]">🚘 {drv.vehicle || "MOTO"}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Delivery Roster Table */}
       <Card className="p-6 space-y-4">
         <div className="flex items-center justify-between border-b border-[#181824] pb-3">
           <h2 className="font-semibold text-white text-sm flex items-center gap-2">
-            <Truck className="w-4 h-4 text-blue-400" /> Liste des Livraisons en Cours
+            <Truck className="w-4 h-4 text-blue-400" /> Suivi des Livraisons
           </h2>
           <Badge variant="outline">Workflow : PENDING ➔ ASSIGNED ➔ IN_TRANSIT ➔ DELIVERED</Badge>
         </div>
@@ -246,7 +347,7 @@ export default function DeliveryManagementPage() {
             <Inbox className="w-10 h-10 mx-auto text-gray-600" />
             <p className="text-xs text-gray-400 font-medium">Aucune livraison enregistrée</p>
             <p className="text-[11px] text-gray-500 max-w-md mx-auto">
-              Lorsqu&apos;une commande est validée via WhatsApp ou l&apos;Agent IA Commercial, la livraison associée s&apos;affichera automatiquement ici pour assignation d&apos;un livreur.
+              Lorsqu&apos;une commande est validée via WhatsApp ou l&apos;Agent IA Commercial, la livraison associée s&apos;affichera automatiquement ici.
             </p>
           </div>
         ) : (
@@ -334,6 +435,106 @@ export default function DeliveryManagementPage() {
         )}
       </Card>
 
+      {/* CREATE DRIVER MODAL */}
+      {showCreateDriverModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[#181824] pb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-[#7B61FF]" /> Créer un Livreur
+              </h3>
+              <button
+                onClick={() => setShowCreateDriverModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDriver} className="space-y-4 text-xs font-mono">
+              <div>
+                <label className="block text-gray-300 mb-1">Nom complet du livreur</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="ex: Rasmané Sawadogo"
+                  value={driverForm.name}
+                  onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
+                  className="w-full bg-[#0A0A14] border border-[#242436] rounded-xl p-3 text-white focus:outline-none focus:border-[#7B61FF]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-1">Numéro de téléphone</label>
+                <input
+                  type="text"
+                  placeholder="ex: +22676000000"
+                  value={driverForm.phone}
+                  onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value })}
+                  className="w-full bg-[#0A0A14] border border-[#242436] rounded-xl p-3 text-white focus:outline-none focus:border-[#7B61FF]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-300 mb-1">Type de Véhicule</label>
+                  <select
+                    value={driverForm.vehicle}
+                    onChange={(e) => setDriverForm({ ...driverForm, vehicle: e.target.value })}
+                    className="w-full bg-[#0A0A14] border border-[#242436] rounded-xl p-3 text-white focus:outline-none focus:border-[#7B61FF]"
+                  >
+                    <option value="MOTO">Moto</option>
+                    <option value="MOTO_TRICYCLE">Tricycle</option>
+                    <option value="CAMIONNETTE">Camionnette</option>
+                    <option value="VOITURE">Voiture</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-gray-300 mb-1">Statut Initial</label>
+                  <select
+                    value={driverForm.status}
+                    onChange={(e) => setDriverForm({ ...driverForm, status: e.target.value })}
+                    className="w-full bg-[#0A0A14] border border-[#242436] rounded-xl p-3 text-white focus:outline-none focus:border-[#7B61FF]"
+                  >
+                    <option value="ACTIVE">Actif / Disponible</option>
+                    <option value="BUSY">En livraison</option>
+                    <option value="INACTIVE">Inactif</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-gray-300 mb-1">Zones couvertes & Notes</label>
+                <textarea
+                  rows={2}
+                  placeholder="ex: Secteur 1 à 12, Ouaga 2000..."
+                  value={driverForm.notes}
+                  onChange={(e) => setDriverForm({ ...driverForm, notes: e.target.value })}
+                  className="w-full bg-[#0A0A14] border border-[#242436] rounded-xl p-3 text-white focus:outline-none focus:border-[#7B61FF]"
+                />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-[#181824]">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateDriverModal(false)}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium rounded-xl"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-bold rounded-xl shadow-lg"
+                >
+                  Créer le Livreur
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* DRIVER ASSIGNMENT MODAL */}
       {showAssignModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -364,8 +565,18 @@ export default function DeliveryManagementPage() {
               <div>
                 <label className="block text-gray-300 mb-1">Sélectionner un livreur de l&apos;organisation</label>
                 {drivers.length === 0 ? (
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs">
-                    ⚠️ Aucun livreur disponible dans votre organisation. Ajoutez d&apos;abord un livreur dans l&apos;onglet Équipe / Opérations.
+                  <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-3">
+                    <p className="text-amber-300 text-xs font-bold">⚠️ Aucun livreur disponible dans votre organisation</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAssignModal(false);
+                        setShowCreateDriverModal(true);
+                      }}
+                      className="w-full py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-bold rounded-xl shadow-md text-xs flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" /> + Créer mon premier livreur
+                    </button>
                   </div>
                 ) : (
                   <select
@@ -377,7 +588,7 @@ export default function DeliveryManagementPage() {
                     <option value="">-- Choisir un livreur --</option>
                     {drivers.map((drv) => (
                       <option key={drv.id} value={drv.id}>
-                        {drv.name} ({drv.phone_number || "Sans téléphone"}) - {drv.status}
+                        {drv.name} ({drv.phone_number || drv.phone || "Sans téléphone"}) - {drv.status}
                       </option>
                     ))}
                   </select>

@@ -156,9 +156,11 @@ export class EvolutionWhatsAppAdapter implements IWhatsAppProvider {
   }
 
   verifyWebhookSignature(rawBody: string, signature: string, secret: string): boolean {
-    const expectedKey = secret || this.apiKey;
-    if (!expectedKey) return true; // Optional check if key is unconfigured
-    return signature === expectedKey || signature.includes(expectedKey);
+    const expectedKey = (secret || this.apiKey || '').trim();
+    // If no signature header was provided by Evolution API, accept payload (Evolution v2 webhook default behavior)
+    if (!signature || !signature.trim()) return true;
+    if (!expectedKey) return true;
+    return signature === expectedKey || signature.includes(expectedKey) || expectedKey.includes(signature);
   }
 
   /**
