@@ -218,119 +218,129 @@ export class WhatsAppApplicationService {
     }
 
     // 8. Execute AI Agent Completion (AI_ACTIVE)
-    const { data: products } = await this.supabase
-      .from('products')
-      .select('*')
-      .eq('organization_id', targetOrgId);
+    try {
+      const { data: products } = await this.supabase
+        .from('products')
+        .select('*')
+        .eq('organization_id', targetOrgId);
 
-    const availableProducts = (products || []).map((p) => ({
-      id: p.id,
-      organizationId: targetOrgId,
-      sku: p.sku || 'SKU-001',
-      name: p.name,
-      category: p.category || 'GENERAL',
-      purchasePrice: Number(p.purchase_price || 0),
-      sellingPrice: Number(p.selling_price || 0),
-      currency: 'XOF',
-      minimumStock: Number(p.alert_threshold || 5),
-      unit: 'unités',
-      status: p.status || 'ACTIVE',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }));
+      const availableProducts = (products || []).map((p) => ({
+        id: p.id,
+        organizationId: targetOrgId,
+        sku: p.sku || 'SKU-001',
+        name: p.name,
+        category: p.category || 'GENERAL',
+        purchasePrice: Number(p.purchase_price || 0),
+        sellingPrice: Number(p.selling_price || 0),
+        currency: 'XOF',
+        minimumStock: Number(p.alert_threshold || 5),
+        unit: 'unités',
+        status: p.status || 'ACTIVE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
 
-    const { data: historyMsgs } = await this.supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(10);
+      const { data: historyMsgs } = await this.supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+        .limit(10);
 
-    const mappedMsgs = (historyMsgs || []).map((m) => ({
-      id: m.id,
-      organizationId: targetOrgId,
-      conversationId: m.conversation_id,
-      direction: m.direction,
-      senderType: m.sender_type,
-      messageType: m.message_type,
-      content: m.content || '',
-      status: m.status,
-      metadata: {},
-      sentAt: new Date(m.created_at),
-      createdAt: new Date(m.created_at),
-    }));
+      const mappedMsgs = (historyMsgs || []).map((m) => ({
+        id: m.id,
+        organizationId: targetOrgId,
+        conversationId: m.conversation_id,
+        direction: m.direction,
+        senderType: m.sender_type,
+        messageType: m.message_type,
+        content: m.content || '',
+        status: m.status,
+        metadata: {},
+        sentAt: new Date(m.created_at),
+        createdAt: new Date(m.created_at),
+      }));
 
-    const mockCustomer = {
-      id: customerId,
-      organizationId: targetOrgId,
-      firstName: event.senderName || 'Client',
-      lastName: event.senderPhone.slice(-4),
-      fullName: event.senderName || `Client ${event.senderPhone.slice(-4)}`,
-      phone: event.senderPhone,
-      city: 'Ouagadougou',
-      source: 'WHATSAPP',
-      status: 'ACTIVE' as const,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+      const mockCustomer = {
+        id: customerId,
+        organizationId: targetOrgId,
+        firstName: event.senderName || 'Client',
+        lastName: event.senderPhone.slice(-4),
+        fullName: event.senderName || `Client ${event.senderPhone.slice(-4)}`,
+        phone: event.senderPhone,
+        city: 'Ouagadougou',
+        source: 'WHATSAPP',
+        status: 'ACTIVE' as const,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
-    const { data: orgData } = await this.supabase
-      .from('organizations')
-      .select('settings')
-      .eq('id', targetOrgId)
-      .single();
+      const { data: orgData } = await this.supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', targetOrgId)
+        .single();
 
-    const aiGateway = new AnthropicAIGateway();
-    const contextService = new SalesAgentContextService();
-    const salesAgentService = new SalesAgentService(aiGateway, contextService);
+      const aiGateway = new AnthropicAIGateway();
+      const contextService = new SalesAgentContextService();
+      const salesAgentService = new SalesAgentService(aiGateway, contextService);
 
-    const aiResult = await salesAgentService.generateResponse(
-      mockCustomer,
-      mappedMsgs,
-      availableProducts,
-      targetOrgId,
-      orgData?.settings?.ai_agent_config
-    );
+      const aiResult = await salesAgentService.generateResponse(
+        mockCustomer,
+        mappedMsgs,
+        availableProducts,
+        targetOrgId,
+        orgData?.settings?.ai_agent_config
+      );
 
-    // 9. Save Outbound AI Response
-    await this.supabase.from('messages').insert({
-      organization_id: targetOrgId,
-      conversation_id: conversationId,
-      customer_id: customerId || null,
-      direction: 'OUTBOUND',
-      sender_type: 'AI',
-      sender_id: 'SALES_AI',
-      message_type: 'TEXT',
-      content: aiResult.responseText,
-      status: 'SENT',
-    });
-
-    // 10. Send Outbound Message via Provider Adapter
-    await this.providerAdapter.sendTextMessage(providerIdentity, {
-      toPhoneNumber: event.senderPhone,
-      messageText: aiResult.responseText,
-    });
-
-    // Handle Handoff if triggered by AI
-    if (aiResult.triggerHandoff) {
-      await this.supabase.from('human_handoffs').insert({
+      // 9. Save Outbound AI Response
+      await this.supabase.from('messages').insert({
         organization_id: targetOrgId,
         conversation_id: conversationId,
-        reason: 'Le client demande un conseiller humain',
-        status: 'PENDING',
+        customer_id: customerId || null,
+        direction: 'OUTBOUND',
+        sender_type: 'AI',
+        sender_id: 'SALES_AI',
+        message_type: 'TEXT',
+        content: aiResult.responseText,
+        status: 'SENT',
       });
 
-      await this.supabase
-        .from('conversations')
-        .update({ conversation_mode: 'ESCALATED', assigned_agent: 'HUMAN' })
-        .eq('id', conversationId);
-    }
+      // 10. Send Outbound Message via Provider Adapter
+      await this.providerAdapter.sendTextMessage(providerIdentity, {
+        toPhoneNumber: event.senderPhone,
+        messageText: aiResult.responseText,
+      });
 
-    return {
-      status: 'SUCCESS',
-      message: 'Inbound message processed and AI response sent via provider.',
-      organizationId: targetOrgId,
-      conversationId,
-    };
+      // Handle Handoff if triggered by AI
+      if (aiResult.triggerHandoff) {
+        await this.supabase.from('human_handoffs').insert({
+          organization_id: targetOrgId,
+          conversation_id: conversationId,
+          reason: 'Le client demande un conseiller humain',
+          status: 'PENDING',
+        });
+
+        await this.supabase
+          .from('conversations')
+          .update({ conversation_mode: 'ESCALATED', assigned_agent: 'HUMAN' })
+          .eq('id', conversationId);
+      }
+
+      return {
+        status: 'SUCCESS',
+        message: 'Inbound message processed and AI response sent via provider.',
+        organizationId: targetOrgId,
+        conversationId,
+      };
+    } catch (aiErr: any) {
+      console.warn(`[AI_RESPONSE_BLOCKED] ${aiErr.message}`);
+      return {
+        status: 'SUCCESS',
+        message: `Message entrant enregistré dans le CRM. Réponse IA bloquée : ${aiErr.message}`,
+        organizationId: targetOrgId,
+        conversationId,
+      };
+    }
   }
 }
