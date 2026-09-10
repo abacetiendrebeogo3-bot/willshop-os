@@ -95,27 +95,25 @@ export async function POST(request: NextRequest) {
     // 6. Check current connection state
     const connState = await evolutionAdapter.getConnectionState(instanceName);
 
+    // Pre-register or update whatsapp_numbers row so org is mapped immediately
+    const ownerInfo = await evolutionAdapter.getInstanceOwnerInfo(instanceName);
+    const realPhone = ownerInfo.phoneNumber || connState.phoneNumber || instanceName;
+
+    await supabaseAdmin.from('whatsapp_numbers').upsert(
+      {
+        organization_id: organizationId,
+        phone_number: realPhone,
+        display_name: ownerInfo.displayName || 'WILLShop Evolution',
+        provider: 'EVOLUTION',
+        provider_identity: instanceName,
+        provider_phone_number_id: instanceName,
+        status: 'ACTIVE',
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'provider,provider_phone_number_id' }
+    );
+
     if (connState.state === 'CONNECTED') {
-      // If instance is already connected, fetch identity and update DB
-      const ownerInfo = await evolutionAdapter.getInstanceOwnerInfo(instanceName);
-      const realPhone = ownerInfo.phoneNumber || connState.phoneNumber || '';
-
-      if (realPhone) {
-        await supabaseAdmin.from('whatsapp_numbers').upsert(
-          {
-            organization_id: organizationId,
-            phone_number: realPhone,
-            display_name: ownerInfo.displayName || 'WILLShop Evolution',
-            provider: 'EVOLUTION',
-            provider_identity: instanceName,
-            provider_phone_number_id: instanceName,
-            status: 'ACTIVE',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'provider,provider_phone_number_id' }
-        );
-      }
-
       return NextResponse.json({
         success: true,
         instanceName,

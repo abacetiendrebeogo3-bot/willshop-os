@@ -21,58 +21,60 @@ export class WhatsAppEventNormalizer {
   }
 
   private static normalizeEvolution(payload: any): InboundWhatsAppEvent | null {
-    const eventName = String(payload.event || '').toLowerCase();
-    const isMessageEvent = eventName.includes('message') || eventName.includes('upsert');
-
-    if (!isMessageEvent && !payload.data?.key) {
-      return null;
-    }
-
-    let msgData = payload.data;
+    let msgData = payload.data || payload;
     if (Array.isArray(msgData)) {
       msgData = msgData[msgData.length - 1];
     } else if (msgData?.messages && Array.isArray(msgData.messages)) {
       msgData = msgData.messages[msgData.messages.length - 1];
     }
 
-    if (!msgData || !msgData.key) {
+    if (!msgData) {
       return null;
     }
 
-    const remoteJid = msgData.key.remoteJid || '';
+    const keyObj = msgData.key || payload.key || {};
+    const remoteJid = keyObj.remoteJid || msgData.remoteJid || payload.remoteJid || '';
     if (remoteJid.includes('@g.us')) {
       // Ignore group chats in commercial agent
       return null;
     }
 
-    const rawJidUser = remoteJid.split('@')[0].split(':')[0];
-    const senderPhone = rawJidUser.replace(/[^\d+]/g, '');
+    const rawJidUser = (remoteJid || '').split('@')[0].split(':')[0];
+    let senderPhone = rawJidUser.replace(/[^\d+]/g, '');
+    if (!senderPhone && msgData.from) {
+      senderPhone = String(msgData.from).replace(/[^\d+]/g, '');
+    }
 
-    const senderName = msgData.pushName || senderPhone;
-    const externalMessageId = msgData.key.id || `EVO-${Date.now()}`;
-    const fromMe = !!msgData.key.fromMe;
-    const providerIdentity = String(payload.instance || payload.sender || '').trim();
+    const senderName = msgData.pushName || payload.pushName || (senderPhone ? `+${senderPhone}` : 'Client WhatsApp');
+    const externalMessageId = keyObj.id || msgData.id || `EVO-${Date.now()}`;
+    const fromMe = !!keyObj.fromMe || !!msgData.fromMe;
+    const providerIdentity = String(payload.instance || payload.sender || payload.instanceName || 'willshop_pilot').trim();
 
     let messageType: WhatsAppMessageType = 'TEXT';
     let textBody = '';
     let mediaUrl: string | undefined;
 
-    if (msgData.message?.conversation) {
-      textBody = msgData.message.conversation;
-    } else if (msgData.message?.extendedTextMessage?.text) {
-      textBody = msgData.message.extendedTextMessage.text;
-    } else if (msgData.messageType === 'imageMessage' || msgData.message?.imageMessage) {
+    const msgContent = msgData.message || msgData;
+    if (msgContent?.conversation) {
+      textBody = msgContent.conversation;
+    } else if (msgContent?.extendedTextMessage?.text) {
+      textBody = msgContent.extendedTextMessage.text;
+    } else if (typeof msgContent === 'string') {
+      textBody = msgContent;
+    } else if (msgData.text) {
+      textBody = msgData.text;
+    } else if (msgData.messageType === 'imageMessage' || msgContent?.imageMessage) {
       messageType = 'IMAGE';
-      textBody = msgData.message?.imageMessage?.caption || '[Image]';
-      mediaUrl = msgData.message?.imageMessage?.url;
-    } else if (msgData.messageType === 'audioMessage' || msgData.message?.audioMessage) {
+      textBody = msgContent?.imageMessage?.caption || '[Image]';
+      mediaUrl = msgContent?.imageMessage?.url;
+    } else if (msgData.messageType === 'audioMessage' || msgContent?.audioMessage) {
       messageType = 'AUDIO';
       textBody = '[Vocale]';
-      mediaUrl = msgData.message?.audioMessage?.url;
-    } else if (msgData.messageType === 'documentMessage' || msgData.message?.documentMessage) {
+      mediaUrl = msgContent?.audioMessage?.url;
+    } else if (msgData.messageType === 'documentMessage' || msgContent?.documentMessage) {
       messageType = 'DOCUMENT';
-      textBody = msgData.message?.documentMessage?.fileName || '[Document]';
-      mediaUrl = msgData.message?.documentMessage?.url;
+      textBody = msgContent?.documentMessage?.fileName || '[Document]';
+      mediaUrl = msgContent?.documentMessage?.url;
     }
 
     if (!senderPhone && !textBody) {

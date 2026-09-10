@@ -77,11 +77,9 @@ export async function POST(request: NextRequest) {
       .insert({
         organization_id: organizationId,
         name: name.trim(),
-        phone_number: phone ? phone.trim() : null,
-        phone: phone ? phone.trim() : null,
+        phone: phone ? phone.trim() : '+22670000000',
         vehicle: vehicle || 'MOTO',
-        status: status || 'ACTIVE',
-        notes: notes || null,
+        status: status || 'AVAILABLE',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

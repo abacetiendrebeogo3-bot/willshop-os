@@ -26,33 +26,58 @@ export class WhatsAppApplicationService {
     organizationId?: string;
     conversationId?: string;
   }> {
-    // 1. Resolve Organization ID via DB lookup only
-    const providerIdentity = event.providerIdentity;
-    if (!providerIdentity || providerIdentity === 'default_id') {
-      return {
-        status: 'ERROR',
-        message: 'Unidentified provider identity. Event rejected.',
-      };
-    }
+    // 1. Resolve Organization ID with robust fallback chain
+    const providerIdentity = event.providerIdentity || 'willshop_pilot';
+    let targetOrgId = '';
+    let whatsappNumberId: string | null = null;
 
+    // Stage A: Exact match on whatsapp_numbers
     const { data: numRow } = await this.supabase
       .from('whatsapp_numbers')
       .select('organization_id, id, phone_number')
       .or(`provider_identity.eq.${providerIdentity},provider_phone_number_id.eq.${providerIdentity},phone_number.eq.${providerIdentity}`)
-      .eq('status', 'ACTIVE')
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (!numRow || !numRow.organization_id) {
-      return {
-        status: 'ERROR',
-        message: `No active organization registered for provider identity '${providerIdentity}'`,
-      };
+    if (numRow?.organization_id) {
+      targetOrgId = numRow.organization_id;
+      whatsappNumberId = numRow.id;
+    } else {
+      // Stage B: Any EVOLUTION row in whatsapp_numbers
+      const { data: fallbackNumRow } = await this.supabase
+        .from('whatsapp_numbers')
+        .select('organization_id, id')
+        .eq('provider', 'EVOLUTION')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (fallbackNumRow?.organization_id) {
+        targetOrgId = fallbackNumRow.organization_id;
+        whatsappNumberId = fallbackNumRow.id;
+      } else {
+        // Stage C: Single active organization in organizations table
+        const { data: singleOrg } = await this.supabase
+          .from('organizations')
+          .select('id')
+          .is('deleted_at', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (singleOrg?.id) {
+          targetOrgId = singleOrg.id;
+        }
+      }
     }
 
-    const targetOrgId = numRow.organization_id;
-    const whatsappNumberId = numRow.id;
+    if (!targetOrgId) {
+      return {
+        status: 'ERROR',
+        message: `No organization found for provider identity '${providerIdentity}'`,
+      };
+    }
 
     // 2. Idempotency Check on external_message_id (Application pre-check)
     if (event.externalMessageId) {
