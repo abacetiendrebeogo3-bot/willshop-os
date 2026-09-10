@@ -21,8 +21,9 @@ export class AnthropicAIGateway implements IAIGateway {
   private readonly defaultModel: string;
 
   constructor(apiKey?: string, defaultModel?: string) {
-    this.apiKey = apiKey || process.env.ANTHROPIC_API_KEY || '';
-    this.defaultModel = defaultModel || process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
+    const rawKey = apiKey || process.env.ANTHROPIC_API_KEY || '';
+    this.apiKey = rawKey.trim().replace(/^["']|["']$/g, '');
+    this.defaultModel = (defaultModel || process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022').trim().replace(/^["']|["']$/g, '');
   }
 
   async generateCompletion(
@@ -67,7 +68,7 @@ export class AnthropicAIGateway implements IAIGateway {
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
         console.error(`Anthropic API error [${response.status}]:`, errorText);
-        throw new Error(`Anthropic API error: ${response.status}`);
+        throw new Error(`Anthropic API HTTP ${response.status}: ${errorText || response.statusText}`);
       }
 
       const resData = await response.json();

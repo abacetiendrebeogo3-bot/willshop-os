@@ -281,6 +281,47 @@ export class WhatsAppApplicationService {
         .eq('id', targetOrgId)
         .single();
 
+      const aiConfig = orgData?.settings?.ai_agent_config || {};
+
+      // Check if AI Agent is explicitly disabled
+      if (aiConfig.enabled === false) {
+        return {
+          status: 'SUCCESS',
+          message: 'Inbound message saved. AI response suppressed: AI Agent is disabled in organization settings.',
+          organizationId: targetOrgId,
+          conversationId,
+        };
+      }
+
+      // Check Operating Schedule (Horaires de travail)
+      if (aiConfig.schedule?.active) {
+        const startTime = aiConfig.schedule.startTime || '08:00';
+        const endTime = aiConfig.schedule.endTime || '20:00';
+        const timezone = aiConfig.schedule.timezone || 'Africa/Ouagadougou';
+
+        try {
+          const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: timezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          });
+          const currentTime = timeFormatter.format(new Date());
+
+          if (currentTime < startTime || currentTime > endTime) {
+            console.log(`[AI BLOCKED — OUTSIDE CONFIGURED HOURS] Current: ${currentTime}, Range: ${startTime} - ${endTime} (${timezone})`);
+            return {
+              status: 'SUCCESS',
+              message: `AI BLOCKED — OUTSIDE CONFIGURED HOURS (Configured: ${startTime} - ${endTime} ${timezone}, Current: ${currentTime})`,
+              organizationId: targetOrgId,
+              conversationId,
+            };
+          }
+        } catch (scheduleErr: any) {
+          console.warn('[Schedule Check Warning]', scheduleErr);
+        }
+      }
+
       const aiGateway = new AnthropicAIGateway();
       const contextService = new SalesAgentContextService();
       const salesAgentService = new SalesAgentService(aiGateway, contextService);
@@ -290,7 +331,7 @@ export class WhatsAppApplicationService {
         mappedMsgs,
         availableProducts,
         targetOrgId,
-        orgData?.settings?.ai_agent_config
+        aiConfig
       );
 
       // 9. Save Outbound AI Response
