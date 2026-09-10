@@ -6,6 +6,15 @@ import { WhatsAppEventNormalizer } from '../src/infrastructure/whatsapp/WhatsApp
 describe('Evolution WhatsApp Real QR & Instance Management Test Suite', () => {
   const adapter = new EvolutionWhatsAppAdapter('https://mock-evolution.local', 'test-key');
 
+  test('EvolutionWhatsAppAdapter detects valid configuration', () => {
+    assert.strictEqual(adapter.isConfigured(), true);
+    assert.strictEqual(adapter.getConfigError(), null);
+
+    const emptyAdapter = new EvolutionWhatsAppAdapter('', '');
+    assert.strictEqual(emptyAdapter.isConfigured(), false);
+    assert.ok(emptyAdapter.getConfigError()?.includes('Evolution API'));
+  });
+
   test('EvolutionWhatsAppAdapter exposes instance administration methods', () => {
     assert.strictEqual(typeof adapter.createInstance, 'function');
     assert.strictEqual(typeof adapter.getConnectionState, 'function');

@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
 
     if (!supabaseUrl || !serviceKey) {
       return NextResponse.json(
-        { error: 'Configuration serveur manquante (Supabase credentials)' },
+        { error: 'Configuration serveur incomplète : SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_URL non définie dans Vercel.' },
         { status: 500 }
       );
     }
@@ -47,36 +47,36 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        { error: 'Session non authentifiée' },
+        { error: 'Session non authentifiée. Veuillez vous reconnecter.' },
         { status: 401 }
       );
     }
 
-    // 2. Resolve organization_id server-side
+    // 2. Resolve organization_id server-side via membership (NO FALLBACK)
     const { data: userRoles } = await supabaseAdmin
       .from('user_organization_roles')
       .select('organization_id')
       .eq('user_id', user.id)
       .is('deleted_at', null);
 
-    let organizationId = userRoles?.[0]?.organization_id;
-    if (!organizationId) {
-      const { data: orgs } = await supabaseAdmin
-        .from('organizations')
-        .select('id')
-        .limit(1);
-      organizationId = orgs?.[0]?.id;
-    }
-
+    const organizationId = userRoles?.[0]?.organization_id;
     if (!organizationId) {
       return NextResponse.json(
-        { error: 'Aucune organisation trouvée pour cet utilisateur' },
-        { status: 400 }
+        { error: 'Aucune organisation valide associée à cet utilisateur.' },
+        { status: 403 }
+      );
+    }
+
+    // 3. Initialize Evolution Adapter and check credentials
+    const evolutionAdapter = new EvolutionWhatsAppAdapter();
+    if (!evolutionAdapter.isConfigured()) {
+      return NextResponse.json(
+        { error: evolutionAdapter.getConfigError() },
+        { status: 500 }
       );
     }
 
     const instanceName = `ws_org_${organizationId.replace(/-/g, '').slice(0, 12)}`;
-    const evolutionAdapter = new EvolutionWhatsAppAdapter();
 
     // 3. Logout on Evolution API
     await evolutionAdapter.logoutInstance(instanceName);
