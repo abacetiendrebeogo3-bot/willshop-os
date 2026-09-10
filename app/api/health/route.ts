@@ -25,54 +25,64 @@ export async function GET() {
   let anthropicDirect: any = { status: 'MISSING', error: 'ANTHROPIC_API_KEY missing' };
 
   if (apiKey) {
+    const candidateModels = [
+      process.env.ANTHROPIC_MODEL,
+      'claude-3-5-sonnet-latest',
+      'claude-3-5-sonnet-20240620',
+      'claude-3-haiku-20240307',
+    ].filter(Boolean) as string[];
+
     const startTime = Date.now();
-    const model = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
-    try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 50,
-          temperature: 0,
-          messages: [{ role: 'user', content: 'Réponds uniquement : TEST_ANTHROPIC_OK' }],
-        }),
-      });
-      const latencyMs = Date.now() - startTime;
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.content?.[0]?.text || '';
-        anthropicDirect = {
-          status: text.includes('TEST_ANTHROPIC_OK') ? 'PASS' : 'PARTIAL',
-          httpStatus: response.status,
-          model,
-          latencyMs,
-          responseText: text,
-        };
-      } else {
-        const errorText = await response.text().catch(() => '');
-        let parsed = errorText;
-        try {
-          const jsonErr = JSON.parse(errorText);
-          parsed = jsonErr.error?.message || errorText;
-        } catch {}
+
+    for (const model of candidateModels) {
+      try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            max_tokens: 50,
+            temperature: 0,
+            messages: [{ role: 'user', content: 'Réponds uniquement : TEST_ANTHROPIC_OK' }],
+          }),
+        });
+        const latencyMs = Date.now() - startTime;
+        if (response.ok) {
+          const data = await response.json();
+          const text = data.content?.[0]?.text || '';
+          anthropicDirect = {
+            status: text.includes('TEST_ANTHROPIC_OK') ? 'PASS' : 'PARTIAL',
+            httpStatus: response.status,
+            model,
+            latencyMs,
+            responseText: text,
+          };
+          break; // Stop at first successful model!
+        } else {
+          const errorText = await response.text().catch(() => '');
+          let parsed = errorText;
+          try {
+            const jsonErr = JSON.parse(errorText);
+            parsed = jsonErr.error?.message || errorText;
+          } catch {}
+          anthropicDirect = {
+            status: 'FAIL',
+            httpStatus: response.status,
+            model,
+            latencyMs,
+            error: `HTTP ${response.status}: ${parsed}`,
+          };
+        }
+      } catch (err: any) {
         anthropicDirect = {
           status: 'FAIL',
-          httpStatus: response.status,
-          model,
-          latencyMs,
-          error: `HTTP ${response.status}: ${parsed}`,
+          error: `Exception: ${err.message}`,
         };
       }
-    } catch (err: any) {
-      anthropicDirect = {
-        status: 'FAIL',
-        error: `Exception: ${err.message}`,
-      };
     }
   }
 

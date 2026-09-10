@@ -23,7 +23,7 @@ export class AnthropicAIGateway implements IAIGateway {
   constructor(apiKey?: string, defaultModel?: string) {
     const rawKey = apiKey || process.env.ANTHROPIC_API_KEY || '';
     this.apiKey = rawKey.trim().replace(/^["']|["']$/g, '');
-    this.defaultModel = (defaultModel || process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022').trim().replace(/^["']|["']$/g, '');
+    this.defaultModel = (defaultModel || process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest').trim().replace(/^["']|["']$/g, '');
   }
 
   async generateCompletion(
