@@ -26,15 +26,18 @@ export async function GET() {
 
   if (apiKey) {
     const candidateModels = [
-      process.env.ANTHROPIC_MODEL,
       'claude-3-5-sonnet-latest',
       'claude-3-5-sonnet-20240620',
       'claude-3-haiku-20240307',
-    ].filter(Boolean) as string[];
+      'claude-3-opus-20240229',
+      process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022',
+    ];
 
+    const modelResults: any[] = [];
     const startTime = Date.now();
 
     for (const model of candidateModels) {
+      if (!model) continue;
       try {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
@@ -45,23 +48,20 @@ export async function GET() {
           },
           body: JSON.stringify({
             model,
-            max_tokens: 50,
+            max_tokens: 30,
             temperature: 0,
             messages: [{ role: 'user', content: 'Réponds uniquement : TEST_ANTHROPIC_OK' }],
           }),
         });
-        const latencyMs = Date.now() - startTime;
         if (response.ok) {
           const data = await response.json();
           const text = data.content?.[0]?.text || '';
-          anthropicDirect = {
-            status: text.includes('TEST_ANTHROPIC_OK') ? 'PASS' : 'PARTIAL',
-            httpStatus: response.status,
+          modelResults.push({
             model,
-            latencyMs,
+            httpStatus: response.status,
+            ok: true,
             responseText: text,
-          };
-          break; // Stop at first successful model!
+          });
         } else {
           const errorText = await response.text().catch(() => '');
           let parsed = errorText;
@@ -69,21 +69,30 @@ export async function GET() {
             const jsonErr = JSON.parse(errorText);
             parsed = jsonErr.error?.message || errorText;
           } catch {}
-          anthropicDirect = {
-            status: 'FAIL',
-            httpStatus: response.status,
+          modelResults.push({
             model,
-            latencyMs,
+            httpStatus: response.status,
+            ok: false,
             error: `HTTP ${response.status}: ${parsed}`,
-          };
+          });
         }
       } catch (err: any) {
-        anthropicDirect = {
-          status: 'FAIL',
+        modelResults.push({
+          model,
+          ok: false,
           error: `Exception: ${err.message}`,
-        };
+        });
       }
     }
+
+    const workingModel = modelResults.find((m) => m.ok);
+
+    anthropicDirect = {
+      status: workingModel ? 'PASS' : 'FAIL',
+      activeModel: workingModel ? workingModel.model : null,
+      totalLatencyMs: Date.now() - startTime,
+      modelResults,
+    };
   }
 
   return NextResponse.json({
