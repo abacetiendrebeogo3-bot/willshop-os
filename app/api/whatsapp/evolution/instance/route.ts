@@ -5,20 +5,17 @@ import { EvolutionWhatsAppAdapter } from '@/src/infrastructure/whatsapp/Evolutio
 
 export const dynamic = 'force-dynamic';
 
+const DEFAULT_SUPABASE_URL = 'https://stbzctncpvgqdpybcrmg.supabase.co';
+const DEFAULT_SUPABASE_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN0YnpjdG5jcHZncWRweWJjcm1nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MDAzMjYsImV4cCI6MjEwNDE3NjMyNn0.G7QlTqyz4_D6nxbn72tIX1K-nbAKBzSX7CuMB2jixvs';
+
 export async function POST(request: NextRequest) {
   try {
-    const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-    const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+    const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_KEY;
 
     const supabaseUrl = rawUrl.trim().replace(/^["']|["']$/g, '');
     const serviceKey = rawServiceKey.trim().replace(/^["']|["']$/g, '');
-
-    if (!supabaseUrl || !serviceKey) {
-      return NextResponse.json(
-        { error: 'Configuration serveur incomplète : SUPABASE_SERVICE_ROLE_KEY ou NEXT_PUBLIC_SUPABASE_URL non définie dans Vercel.' },
-        { status: 500 }
-      );
-    }
 
     const supabaseAdmin = createClient(supabaseUrl, serviceKey, {
       auth: { persistSession: false },
