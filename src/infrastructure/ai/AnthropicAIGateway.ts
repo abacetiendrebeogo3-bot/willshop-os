@@ -28,16 +28,9 @@ export class AnthropicAIGateway implements IAIGateway {
   async generateCompletion(
     request: AIModelRequest & { tools?: AnthropicToolDefinition[] }
   ): Promise<AIModelResponse & { toolCalls?: Array<{ id: string; name: string; input: any }> }> {
-    if (!this.apiKey) {
-      console.warn('AnthropicAIGateway: ANTHROPIC_API_KEY is not set. Falling back to mock response.');
-      return {
-        content: "Bonjour ! Je suis l'Agent IA WillShop. Comment puis-je vous aider aujourd'hui ?",
-        promptTokens: 10,
-        completionTokens: 15,
-        totalTokens: 25,
-        model: 'willshop-ai-fallback',
-        provider: 'fallback',
-      };
+    if (!this.apiKey || !this.apiKey.trim()) {
+      console.error('AnthropicAIGateway: ANTHROPIC_API_KEY missing');
+      throw new Error('BLOCKED — ANTHROPIC_API_KEY missing');
     }
 
     const systemMessage = request.messages.find((m) => m.role === 'system')?.content || '';
