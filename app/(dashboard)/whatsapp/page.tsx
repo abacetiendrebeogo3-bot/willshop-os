@@ -34,6 +34,9 @@ import {
   Copy,
   Lock,
   QrCode,
+  LogOut,
+  Loader2,
+  Smartphone,
 } from "lucide-react";
 
 export default function WhatsAppHubPage() {
@@ -49,24 +52,27 @@ export default function WhatsAppHubPage() {
   const [aiAgentEnabled, setAiAgentEnabled] = useState<boolean>(true);
   const [aiKillSwitch, setAiKillSwitch] = useState<boolean>(false);
 
-  // Evolution API State
-  const [evolutionInstance, setEvolutionInstance] = useState<string>("willshop_pilot");
-  const [evolutionStatus, setEvolutionStatus] = useState<"CONNECTED" | "DISCONNECTED" | "CONNECTING">("DISCONNECTED");
-  const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-
   // Collections State
   const [conversations, setConversations] = useState<any[]>([]);
   const [selectedConv, setSelectedConv] = useState<any | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
-  const [customers, setCustomers] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [handoffs, setHandoffs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSending, setIsSending] = useState<boolean>(false);
 
-  // Modals
+  // Modals State
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
-  const [showNewMsgModal, setShowNewMsgModal] = useState<boolean>(false);
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+
+  // Real Evolution QR Code Flow States
+  const [isInitializingInstance, setIsInitializingInstance] = useState<boolean>(false);
+  const [isRefreshingQr, setIsRefreshingQr] = useState<boolean>(false);
+  const [qrBase64, setQrBase64] = useState<string | null>(null);
+  const [qrCodeText, setQrCodeText] = useState<string | null>(null);
+  const [qrPairingCode, setQrPairingCode] = useState<string | null>(null);
+  const [qrModalStatus, setQrModalStatus] = useState<
+    "INITIALIZING" | "WAITING_QR" | "CONNECTED" | "ERROR"
+  >("INITIALIZING");
+  const [qrErrorMessage, setQrErrorMessage] = useState<string | null>(null);
+  const [connectedPhoneNumber, setConnectedPhoneNumber] = useState<string | null>(null);
 
   // Form states
   const [connectForm, setConnectForm] = useState({
@@ -76,14 +82,7 @@ export default function WhatsAppHubPage() {
     providerPhoneNumberId: "willshop_pilot",
   });
 
-  const [newMsgForm, setNewMsgForm] = useState({
-    customerId: "",
-    messageText: "",
-  });
-
-  const [replyInput, setReplyInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [convStatusFilter, setConvStatusFilter] = useState<string>("ALL");
 
   // Toast notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -154,7 +153,7 @@ export default function WhatsAppHubPage() {
         .order("created_at", { ascending: false });
 
       if (numRows && numRows.length > 0) {
-        const primaryNumber = numRows[0];
+        const primaryNumber = numRows.find((n: any) => n.status === "ACTIVE") || numRows[0];
         setWhatsappConnected(primaryNumber.status === "ACTIVE");
         setWhatsappNumberInfo(primaryNumber);
       } else {
@@ -237,6 +236,134 @@ export default function WhatsAppHubPage() {
     }
   }, [selectedConv]);
 
+  // Polling for Evolution Status when QR modal is open
+  useEffect(() => {
+    let pollTimer: NodeJS.Timeout | null = null;
+
+    if (showQrModal && (qrModalStatus === "WAITING_QR" || qrModalStatus === "INITIALIZING")) {
+      pollTimer = setInterval(async () => {
+        try {
+          const res = await fetch("/api/whatsapp/evolution/status");
+          if (!res.ok) return;
+
+          const data = await res.json();
+          if (data.status === "CONNECTED") {
+            setQrModalStatus("CONNECTED");
+            setConnectedPhoneNumber(data.phoneNumber || null);
+            showToast(`🟢 WhatsApp connecté avec succès ! (${data.phoneNumber || ""})`);
+            await loadHubData();
+            if (pollTimer) clearInterval(pollTimer);
+          } else if (data.status === "WAITING_QR") {
+            setQrModalStatus("WAITING_QR");
+            if (data.qrCode?.base64) {
+              setQrBase64(data.qrCode.base64);
+            }
+            if (data.qrCode?.code) {
+              setQrCodeText(data.qrCode.code);
+            }
+            if (data.qrCode?.pairingCode) {
+              setQrPairingCode(data.qrCode.pairingCode);
+            }
+          } else if (data.status === "ERROR") {
+            setQrModalStatus("ERROR");
+            setQrErrorMessage(data.error || "Erreur de connexion Evolution");
+            if (pollTimer) clearInterval(pollTimer);
+          }
+        } catch (err) {
+          console.error("Erreur polling status Evolution:", err);
+        }
+      }, 3000);
+    }
+
+    return () => {
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [showQrModal, qrModalStatus]);
+
+  // Start Real Evolution Connect Flow (QR Code)
+  const handleStartEvolutionConnect = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsInitializingInstance(true);
+    setQrErrorMessage(null);
+    setShowConnectModal(false);
+    setShowQrModal(true);
+    setQrModalStatus("INITIALIZING");
+
+    try {
+      const res = await fetch("/api/whatsapp/evolution/instance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setQrModalStatus("ERROR");
+        setQrErrorMessage(data.error || "Échec de création de l'instance Evolution API");
+        return;
+      }
+
+      if (data.state === "CONNECTED") {
+        setQrModalStatus("CONNECTED");
+        setConnectedPhoneNumber(data.phoneNumber || null);
+        showToast("🟢 Ligne WhatsApp Evolution déjà connectée !");
+        await loadHubData();
+        return;
+      }
+
+      setQrModalStatus("WAITING_QR");
+      if (data.qrCode) {
+        setQrBase64(data.qrCode.base64 || null);
+        setQrCodeText(data.qrCode.code || null);
+        setQrPairingCode(data.qrCode.pairingCode || null);
+      }
+    } catch (err: any) {
+      setQrModalStatus("ERROR");
+      setQrErrorMessage(err.message || "Erreur réseau lors de la création de l'instance");
+    } finally {
+      setIsInitializingInstance(false);
+    }
+  };
+
+  // Refresh QR Code manually
+  const handleRefreshQr = async () => {
+    setIsRefreshingQr(true);
+    try {
+      const res = await fetch("/api/whatsapp/evolution/status");
+      const data = await res.json();
+      if (data.qrCode?.base64) {
+        setQrBase64(data.qrCode.base64);
+      }
+      if (data.qrCode?.code) {
+        setQrCodeText(data.qrCode.code);
+      }
+      if (data.qrCode?.pairingCode) {
+        setQrPairingCode(data.qrCode.pairingCode);
+      }
+      showToast("🔄 QR Code rafraîchi");
+    } catch (err) {
+      console.error("Erreur rafraîchissement QR:", err);
+    } finally {
+      setIsRefreshingQr(false);
+    }
+  };
+
+  // Disconnect Evolution WhatsApp Line
+  const handleDisconnectWhatsApp = async () => {
+    if (!confirm("Voulez-vous vraiment déconnecter votre ligne WhatsApp Evolution ?")) return;
+    try {
+      const res = await fetch("/api/whatsapp/evolution/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        alert(`Erreur déconnexion: ${data.error || "Erreur serveur"}`);
+        return;
+      }
+      showToast("🔴 Ligne WhatsApp déconnectée");
+      await loadHubData();
+    } catch (err: any) {
+      alert(`Erreur déconnexion: ${err.message}`);
+    }
+  };
+
   // Toggle Conversation Mode (AI_ACTIVE <-> HUMAN_ACTIVE)
   const handleToggleConvMode = async (convId: string, currentMode: string) => {
     const nextMode = currentMode === "AI_ACTIVE" ? "HUMAN_ACTIVE" : "AI_ACTIVE";
@@ -257,9 +384,14 @@ export default function WhatsAppHubPage() {
     }
   };
 
-  // Connect WhatsApp Number
+  // Connect WhatsApp (For Meta Cloud API fallback or Submission router)
   const handleConnectWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (connectForm.provider === "EVOLUTION") {
+      await handleStartEvolutionConnect();
+      return;
+    }
+
     if (!connectForm.phoneNumber.trim() || !organizationId) return;
 
     try {
@@ -318,34 +450,59 @@ export default function WhatsAppHubPage() {
             label={whatsappConnected ? `WHATSAPP ${whatsappNumberInfo?.provider || 'ACTIF'}` : "WHATSAPP PENDING"}
           />
 
-          <button
-            onClick={() => setShowConnectModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-medium rounded-xl transition-all shadow-lg text-sm"
-          >
-            <Phone className="w-4 h-4" />
-            Connecter un Numéro
-          </button>
+          {whatsappConnected ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleStartEvolutionConnect()}
+                className="flex items-center gap-2 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl transition-all text-xs font-semibold"
+              >
+                <QrCode className="w-4 h-4" />
+                Voir QR / Statut
+              </button>
+              <button
+                onClick={handleDisconnectWhatsApp}
+                className="flex items-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl transition-all text-xs font-semibold"
+              >
+                <LogOut className="w-4 h-4" />
+                Déconnecter
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowConnectModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-medium rounded-xl transition-all shadow-lg text-sm"
+            >
+              <Phone className="w-4 h-4" />
+              Connecter un Numéro
+            </button>
+          )}
         </div>
       </div>
 
-      {/* STATUS BAR */}
+      {/* STATUS BAR (Honest UI States) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-xs">
         <div className="bg-[#12121A] border border-[#181824] p-4 rounded-xl space-y-1">
-          <span className="text-gray-400 block">PROVIDER ACTIF</span>
-          <span className="font-bold text-emerald-400 text-sm">
-            {whatsappNumberInfo?.provider || "EVOLUTION API"}
-          </span>
+          <span className="text-gray-400 block">STATUT LIGNE</span>
+          {whatsappConnected ? (
+            <span className="font-bold text-emerald-400 text-sm flex items-center gap-1.5">
+              🟢 CONNECTÉ (ACTIVE)
+            </span>
+          ) : (
+            <span className="font-bold text-amber-400 text-sm flex items-center gap-1.5">
+              🟡 NON CONFIGURÉ
+            </span>
+          )}
         </div>
         <div className="bg-[#12121A] border border-[#181824] p-4 rounded-xl space-y-1">
-          <span className="text-gray-400 block">NUMÉRO CONFIGURÉ</span>
+          <span className="text-gray-400 block">NUMÉRO RÉEL CONNECTÉ</span>
           <span className="font-bold text-white text-sm">
             {whatsappNumberInfo?.phone_number || "Aucun numéro"}
           </span>
         </div>
         <div className="bg-[#12121A] border border-[#181824] p-4 rounded-xl space-y-1">
-          <span className="text-gray-400 block">CONVERSATIONS</span>
+          <span className="text-gray-400 block">PROVIDER TECH</span>
           <span className="font-bold text-blue-400 text-sm">
-            {conversations.length} Active(s)
+            {whatsappNumberInfo?.provider || "EVOLUTION (Baileys)"}
           </span>
         </div>
         <div className="bg-[#12121A] border border-[#181824] p-4 rounded-xl space-y-1">
@@ -456,61 +613,240 @@ export default function WhatsAppHubPage() {
         </div>
       </div>
 
-      {/* CONNECT MODAL */}
+      {/* CONNECT FORM MODAL */}
       {showConnectModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12121A] border border-[#181824] w-full max-w-md p-6 rounded-2xl space-y-4">
             <h3 className="text-xl font-bold text-white">Connecter une Ligne WhatsApp</h3>
-            <form onSubmit={handleConnectWhatsApp} className="space-y-3">
+            <form onSubmit={handleConnectWhatsApp} className="space-y-4">
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Provider</label>
+                <label className="text-xs text-gray-400 block mb-1 font-medium">Provider WhatsApp</label>
                 <select
                   value={connectForm.provider}
                   onChange={(e) => setConnectForm({ ...connectForm, provider: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2.5 text-white text-sm"
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2.5 text-white text-sm focus:border-[#7B61FF] outline-none"
                 >
-                  <option value="EVOLUTION">Evolution API (Baileys / Pilote Private)</option>
-                  <option value="META_CLOUD_API">Meta Cloud API (Officiel)</option>
+                  <option value="EVOLUTION">Evolution API (Pilote Privé — Appairage QR Code)</option>
+                  <option value="META_CLOUD_API">Meta Cloud API (Officiel API Key)</option>
                 </select>
               </div>
+
               <div>
-                <label className="text-xs text-gray-400 block mb-1">Numéro de Téléphone (E.164)</label>
+                <label className="text-xs text-gray-400 block mb-1 font-medium">Nom de la Ligne</label>
                 <input
                   type="text"
-                  placeholder="+22670000000"
-                  value={connectForm.phoneNumber}
-                  onChange={(e) => setConnectForm({ ...connectForm, phoneNumber: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2.5 text-white text-sm"
-                  required
+                  placeholder="WILLShop Commercial"
+                  value={connectForm.displayName}
+                  onChange={(e) => setConnectForm({ ...connectForm, displayName: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2.5 text-white text-sm focus:border-[#7B61FF] outline-none"
                 />
               </div>
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Instance / Phone Number ID</label>
-                <input
-                  type="text"
-                  placeholder="willshop_pilot"
-                  value={connectForm.providerPhoneNumberId}
-                  onChange={(e) => setConnectForm({ ...connectForm, providerPhoneNumberId: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2.5 text-white text-sm"
-                  required
-                />
-              </div>
+
+              {connectForm.provider === "EVOLUTION" ? (
+                <div className="p-3 bg-[#7B61FF]/10 border border-[#7B61FF]/20 rounded-xl text-xs text-gray-300 space-y-1">
+                  <p className="font-semibold text-white flex items-center gap-1.5">
+                    <QrCode className="w-4 h-4 text-[#7B61FF]" />
+                    Connexion par QR Code Evolution API
+                  </p>
+                  <p>
+                    Le système va créer votre instance privée sécurisée et générer un QR Code unique à scanner depuis WhatsApp Business sur votre smartphone.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1 font-medium">Numéro de Téléphone (E.164)</label>
+                    <input
+                      type="text"
+                      placeholder="+22670000000"
+                      value={connectForm.phoneNumber}
+                      onChange={(e) => setConnectForm({ ...connectForm, phoneNumber: e.target.value })}
+                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2.5 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 block mb-1 font-medium">Phone Number ID Meta</label>
+                    <input
+                      type="text"
+                      placeholder="10023456789"
+                      value={connectForm.providerPhoneNumberId}
+                      onChange={(e) => setConnectForm({ ...connectForm, providerPhoneNumberId: e.target.value })}
+                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2.5 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowConnectModal(false)}
-                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-sm"
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-700 transition-all"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#7B61FF] text-white rounded-xl text-sm font-semibold"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-sm font-semibold transition-all flex items-center gap-2"
                 >
-                  Enregistrer
+                  {connectForm.provider === "EVOLUTION" ? (
+                    <>
+                      <QrCode className="w-4 h-4" />
+                      Générer le QR Code
+                    </>
+                  ) : (
+                    "Enregistrer"
+                  )}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* REAL QR CODE FLOW MODAL */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-3xl space-y-5 relative">
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-full bg-[#181824]"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-[#7B61FF]/10 border border-[#7B61FF]/20 rounded-2xl text-[#7B61FF]">
+                <QrCode className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-white">Connecter WhatsApp</h3>
+                <p className="text-xs text-gray-400">Evolution API — Appairage QR Code</p>
+              </div>
+            </div>
+
+            {/* STATUS BADGE */}
+            <div className="flex items-center justify-between bg-[#181824] p-3 rounded-2xl font-mono text-xs">
+              <span className="text-gray-400">Statut :</span>
+              {qrModalStatus === "INITIALIZING" && (
+                <span className="text-amber-400 flex items-center gap-1.5">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  🟡 Connexion en cours...
+                </span>
+              )}
+              {qrModalStatus === "WAITING_QR" && (
+                <span className="text-amber-400 flex items-center gap-1.5 animate-pulse">
+                  🟡 En attente de connexion
+                </span>
+              )}
+              {qrModalStatus === "CONNECTED" && (
+                <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                  🟢 CONNECTÉ ({connectedPhoneNumber || "Prêt"})
+                </span>
+              )}
+              {qrModalStatus === "ERROR" && (
+                <span className="text-red-400 font-bold flex items-center gap-1.5">
+                  🔴 ERREUR DE CONNEXION
+                </span>
+              )}
+            </div>
+
+            {/* QR CODE CONTAINER */}
+            <div className="flex flex-col items-center justify-center p-6 bg-[#0B0B10] border border-[#181824] rounded-2xl space-y-4">
+              {qrModalStatus === "INITIALIZING" && (
+                <div className="h-64 flex flex-col items-center justify-center space-y-3">
+                  <Loader2 className="w-10 h-10 text-[#7B61FF] animate-spin" />
+                  <p className="text-sm text-gray-400">Création de votre instance sécurisée Evolution...</p>
+                </div>
+              )}
+
+              {qrModalStatus === "WAITING_QR" && (
+                <>
+                  {qrBase64 ? (
+                    <div className="p-3 bg-white rounded-2xl border-4 border-[#7B61FF]/30 shadow-2xl">
+                      <img
+                        src={qrBase64.startsWith("data:") ? qrBase64 : `data:image/png;base64,${qrBase64}`}
+                        alt="QR Code WhatsApp Evolution"
+                        className="w-56 h-56 object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="h-56 w-56 flex flex-col items-center justify-center bg-[#12121A] rounded-2xl border border-dashed border-[#282838] p-4 text-center">
+                      <Loader2 className="w-8 h-8 text-[#7B61FF] animate-spin mb-2" />
+                      <p className="text-xs text-gray-400 font-mono">Génération du QR Code...</p>
+                    </div>
+                  )}
+
+                  {qrPairingCode && (
+                    <div className="bg-[#181824] px-4 py-2 rounded-xl text-center">
+                      <span className="text-[11px] text-gray-400 block font-mono">Code d'association :</span>
+                      <span className="text-lg font-bold font-mono text-[#7B61FF] tracking-widest">{qrPairingCode}</span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {qrModalStatus === "CONNECTED" && (
+                <div className="h-64 flex flex-col items-center justify-center space-y-3 text-center">
+                  <div className="w-16 h-16 bg-emerald-500/10 border border-emerald-500/30 rounded-full flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 className="w-10 h-10" />
+                  </div>
+                  <h4 className="text-lg font-bold text-white">Appareil WhatsApp Appairé !</h4>
+                  <p className="text-xs text-gray-400 max-w-xs">
+                    Numéro connecté : <span className="font-mono text-emerald-400">{connectedPhoneNumber || "N/A"}</span>
+                  </p>
+                </div>
+              )}
+
+              {qrModalStatus === "ERROR" && (
+                <div className="h-64 flex flex-col items-center justify-center space-y-3 text-center p-4">
+                  <AlertTriangle className="w-10 h-10 text-red-400" />
+                  <p className="text-sm text-red-300 font-semibold">{qrErrorMessage || "Impossible de contacter Evolution API"}</p>
+                  <p className="text-xs text-gray-400">Vérifiez que les variables EVOLUTION_API_URL et EVOLUTION_API_KEY sont correctement configurées.</p>
+                </div>
+              )}
+            </div>
+
+            {/* INSTRUCTIONS */}
+            {qrModalStatus === "WAITING_QR" && (
+              <div className="bg-[#181824]/60 p-4 rounded-2xl border border-white/5 space-y-2 text-xs text-gray-300">
+                <p className="font-semibold text-white flex items-center gap-1.5">
+                  <Smartphone className="w-4 h-4 text-[#7B61FF]" />
+                  Instructions de connexion :
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-gray-400 font-mono">
+                  <li>Ouvrez <strong className="text-white">WhatsApp Business</strong> sur votre téléphone.</li>
+                  <li>Ouvrez <strong className="text-white">Réglages / Menu (⋮)</strong> ➔ <strong className="text-white">Appareils connectés</strong>.</li>
+                  <li>Appuyez sur <strong className="text-white">Connecter un appareil</strong>.</li>
+                  <li>Scannez ce QR Code.</li>
+                </ol>
+              </div>
+            )}
+
+            {/* ACTIONS */}
+            <div className="flex items-center justify-between pt-2">
+              {qrModalStatus === "WAITING_QR" ? (
+                <button
+                  onClick={handleRefreshQr}
+                  disabled={isRefreshingQr}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingQr ? "animate-spin" : ""}`} />
+                  Actualiser le QR
+                </button>
+              ) : (
+                <div />
+              )}
+
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-semibold transition-all"
+              >
+                {qrModalStatus === "CONNECTED" ? "Terminer" : "Annuler"}
+              </button>
+            </div>
           </div>
         </div>
       )}

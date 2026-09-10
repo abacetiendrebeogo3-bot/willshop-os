@@ -38,7 +38,7 @@ export class WhatsAppApplicationService {
     const { data: numRow } = await this.supabase
       .from('whatsapp_numbers')
       .select('organization_id, id, phone_number')
-      .or(`provider_phone_number_id.eq.${providerIdentity},phone_number.eq.${event.senderPhone}`)
+      .or(`provider_identity.eq.${providerIdentity},provider_phone_number_id.eq.${providerIdentity}`)
       .eq('status', 'ACTIVE')
       .maybeSingle();
 
