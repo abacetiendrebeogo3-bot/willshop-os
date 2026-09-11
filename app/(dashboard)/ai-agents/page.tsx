@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/infrastructure/supabase/client";
-import { DataSourceBadge } from "@/components/ui/data-source-badge";
 import { Card } from "@/components/ui/card";
 import {
   Bot,
@@ -39,7 +38,63 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  MapPin,
+  CreditCard,
+  HelpCircle,
+  FileCheck,
+  Archive,
+  Building2,
+  Truck,
+  FileCode,
 } from "lucide-react";
+
+export interface CompanyInfo {
+  name: string;
+  sector: string;
+  country: string;
+  city: string;
+  address: string;
+  phone: string;
+  email: string;
+  hours: string;
+  description: string;
+  additionalInfo: string;
+}
+
+export interface DeliveryZone {
+  id: string;
+  name: string;
+  districts: string[];
+  fee: number;
+  delay: string;
+  status: "ACTIVE" | "ARCHIVED";
+  notes?: string;
+}
+
+export interface PaymentMethodConfig {
+  id: string;
+  name: string;
+  identifier: string;
+  instructions: string;
+  status: "ACTIVE" | "ARCHIVED";
+  notes?: string;
+}
+
+export interface FAQEntry {
+  id: string;
+  question: string;
+  answer: string;
+  category: string;
+  status: "ACTIVE" | "ARCHIVED";
+}
+
+export interface PolicyEntry {
+  id: string;
+  title: string;
+  content: string;
+  status: "ACTIVE" | "ARCHIVED";
+  updatedAt: string;
+}
 
 export interface KnowledgeEntry {
   id: string;
@@ -67,7 +122,7 @@ export default function AIAgentsConfigPage() {
   // Global AI Status
   const [aiEnabled, setAiEnabled] = useState<boolean>(true);
 
-  // Agent Config State (Section 1: Identité & Comportement)
+  // Section 1: Agent Identity Config State
   const [identityConfig, setIdentityConfig] = useState({
     name: "Sales AI WILLShop",
     presentation: "Assistant commercial virtuel disponible 24/7 pour conseiller et accompagner vos clients.",
@@ -77,39 +132,97 @@ export default function AIAgentsConfigPage() {
     customInstructions: "Accueillir chaleureusement les clients en français. Être poli et donner des informations précises sur nos produits.",
   });
 
-  // Section 2: Knowledge Base State
-  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeEntry[]>([
-    {
-      id: "kb-default-1",
-      title: "Zones & Frais de livraison",
-      category: "LIVRAISON",
-      content: "Livraison à Ouagadougou: 1000 FCFA (24h). Bobo-Dioulasso: 1500 FCFA. Autres villes: Expédition par compagnie de transport.",
-      status: "ACTIVE",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      id: "kb-default-2",
-      title: "Modes de Paiement Acceptés",
-      category: "PAIEMENT",
-      content: "Paiement à la livraison en espèces. Orange Money et Wave acceptés après confirmation du numéro commercial.",
-      status: "ACTIVE",
-      createdAt: new Date().toISOString(),
-    },
-  ]);
-  const [knowledgeCategoryFilter, setKnowledgeCategoryFilter] = useState<string>("ALL");
-  const [showKnowledgeModal, setShowKnowledgeModal] = useState<boolean>(false);
-  const [editingKnowledge, setEditingKnowledge] = useState<KnowledgeEntry | null>(null);
-  const [knowledgeForm, setKnowledgeForm] = useState<{
-    title: string;
-    category: KnowledgeEntry["category"];
-    content: string;
-  }>({
-    title: "",
-    category: "FAQ",
-    content: "",
+  // Section 2: Structured Knowledge Base States
+  const [activeKnowledgeTab, setActiveKnowledgeTab] = useState<
+    "ENTREPRISE" | "LIVRAISON" | "PAIEMENT" | "FAQ" | "POLITIQUES"
+  >("ENTREPRISE");
+
+  // 1. Company Info State
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
+    name: "WILLShop OS",
+    sector: "Commerce & Vente en ligne",
+    country: "Burkina Faso",
+    city: "Ouagadougou",
+    address: "Secteur 13, Zogona",
+    phone: "+226 70 00 00 00",
+    email: "contact@willshop.bf",
+    hours: "Lundi - Samedi : 08h00 - 20h00",
+    description: "Boutique en ligne spécialisée dans la vente de produits de qualité supérieure avec livraison rapide.",
+    additionalInfo: "Service client disponible sur WhatsApp 24/7.",
   });
 
-  // Section 3: Tools & Capabilities State (Real Tools Checkboxes)
+  // 2. Delivery Zones State
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZone[]>([]);
+  const [showZoneModal, setShowZoneModal] = useState<boolean>(false);
+  const [editingZone, setEditingZone] = useState<DeliveryZone | null>(null);
+  const [zoneForm, setZoneForm] = useState<{
+    name: string;
+    districtsRaw: string;
+    fee: number;
+    delay: string;
+    status: "ACTIVE" | "ARCHIVED";
+    notes: string;
+  }>({
+    name: "",
+    districtsRaw: "",
+    fee: 1000,
+    delay: "24h",
+    status: "ACTIVE",
+    notes: "",
+  });
+
+  // 3. Payment Methods State
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [editingPayment, setEditingPayment] = useState<PaymentMethodConfig | null>(null);
+  const [paymentForm, setPaymentForm] = useState<{
+    name: string;
+    identifier: string;
+    instructions: string;
+    status: "ACTIVE" | "ARCHIVED";
+    notes: string;
+  }>({
+    name: "",
+    identifier: "",
+    instructions: "",
+    status: "ACTIVE",
+    notes: "",
+  });
+
+  // 4. FAQs State
+  const [faqs, setFaqs] = useState<FAQEntry[]>([]);
+  const [showFaqModal, setShowFaqModal] = useState<boolean>(false);
+  const [editingFaq, setEditingFaq] = useState<FAQEntry | null>(null);
+  const [faqForm, setFaqForm] = useState<{
+    question: string;
+    answer: string;
+    category: string;
+    status: "ACTIVE" | "ARCHIVED";
+  }>({
+    question: "",
+    answer: "",
+    category: "Général",
+    status: "ACTIVE",
+  });
+
+  // 5. Policies State
+  const [policies, setPolicies] = useState<PolicyEntry[]>([]);
+  const [showPolicyModal, setShowPolicyModal] = useState<boolean>(false);
+  const [editingPolicy, setEditingPolicy] = useState<PolicyEntry | null>(null);
+  const [policyForm, setPolicyForm] = useState<{
+    title: string;
+    content: string;
+    status: "ACTIVE" | "ARCHIVED";
+  }>({
+    title: "",
+    content: "",
+    status: "ACTIVE",
+  });
+
+  // Knowledge Base Articles
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeEntry[]>([]);
+
+  // Section 3: Tools & Capabilities State
   const [toolsConfig, setToolsConfig] = useState<Record<string, boolean>>({
     search_products: true,
     check_price: true,
@@ -135,7 +248,9 @@ export default function AIAgentsConfigPage() {
 
   // Test Modal State
   const [showTestModal, setShowTestModal] = useState<boolean>(false);
-  const [testInputMessage, setTestInputMessage] = useState<string>("Bonjour, quel est le prix du Baume Vibe et livrez-vous à Ouagadougou ?");
+  const [testInputMessage, setTestInputMessage] = useState<string>(
+    "Bonjour, quel est le tarif de livraison pour Kossodo ?"
+  );
   const [isExecutingTest, setIsExecutingTest] = useState<boolean>(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -214,6 +329,44 @@ export default function AIAgentsConfigPage() {
           });
         }
 
+        // 1. Company Info Sync
+        if (aiConfig.company_info) {
+          setCompanyInfo({
+            name: aiConfig.company_info.name || org.name || "WILLShop OS",
+            sector: aiConfig.company_info.sector || "Commerce & Vente en ligne",
+            country: aiConfig.company_info.country || "Burkina Faso",
+            city: aiConfig.company_info.city || "Ouagadougou",
+            address: aiConfig.company_info.address || "",
+            phone: aiConfig.company_info.phone || "",
+            email: aiConfig.company_info.email || "",
+            hours: aiConfig.company_info.hours || "",
+            description: aiConfig.company_info.description || "",
+            additionalInfo: aiConfig.company_info.additionalInfo || "",
+          });
+        } else {
+          setCompanyInfo((prev) => ({ ...prev, name: org.name || prev.name }));
+        }
+
+        // 2. Delivery Zones
+        if (aiConfig.delivery_zones && Array.isArray(aiConfig.delivery_zones)) {
+          setDeliveryZones(aiConfig.delivery_zones);
+        }
+
+        // 3. Payment Methods
+        if (aiConfig.payment_methods && Array.isArray(aiConfig.payment_methods)) {
+          setPaymentMethods(aiConfig.payment_methods);
+        }
+
+        // 4. FAQs
+        if (aiConfig.faqs && Array.isArray(aiConfig.faqs)) {
+          setFaqs(aiConfig.faqs);
+        }
+
+        // 5. Policies
+        if (aiConfig.policies && Array.isArray(aiConfig.policies)) {
+          setPolicies(aiConfig.policies);
+        }
+
         if (aiConfig.knowledge_base && Array.isArray(aiConfig.knowledge_base)) {
           setKnowledgeBase(aiConfig.knowledge_base);
         }
@@ -230,10 +383,25 @@ export default function AIAgentsConfigPage() {
       // Fetch Real Metrics from Database
       const [{ count: convCount }, { count: custCount }, { count: handoffCount }, { count: prodCount }] =
         await Promise.all([
-          supabase.from("conversations").select("*", { count: "exact", head: true }).eq("organization_id", targetOrgId).neq("status", "ARCHIVED"),
-          supabase.from("customers").select("*", { count: "exact", head: true }).eq("organization_id", targetOrgId),
-          supabase.from("human_handoffs").select("*", { count: "exact", head: true }).eq("organization_id", targetOrgId).eq("status", "PENDING"),
-          supabase.from("products").select("*", { count: "exact", head: true }).eq("organization_id", targetOrgId).eq("status", "ACTIVE"),
+          supabase
+            .from("conversations")
+            .select("*", { count: "exact", head: true })
+            .eq("organization_id", targetOrgId)
+            .neq("status", "ARCHIVED"),
+          supabase
+            .from("customers")
+            .select("*", { count: "exact", head: true })
+            .eq("organization_id", targetOrgId),
+          supabase
+            .from("human_handoffs")
+            .select("*", { count: "exact", head: true })
+            .eq("organization_id", targetOrgId)
+            .eq("status", "PENDING"),
+          supabase
+            .from("products")
+            .select("*", { count: "exact", head: true })
+            .eq("organization_id", targetOrgId)
+            .eq("status", "ACTIVE"),
         ]);
 
       setMetrics({
@@ -280,6 +448,11 @@ export default function AIAgentsConfigPage() {
           style: identityConfig.style,
           custom_instructions: identityConfig.customInstructions,
           enabled: aiEnabled,
+          company_info: companyInfo,
+          delivery_zones: deliveryZones,
+          payment_methods: paymentMethods,
+          faqs: faqs,
+          policies: policies,
           knowledge_base: knowledgeBase,
           tools: toolsConfig,
           schedule: scheduleConfig,
@@ -289,12 +462,17 @@ export default function AIAgentsConfigPage() {
 
       const { error } = await supabase
         .from("organizations")
-        .update({ settings: updatedSettings, updated_at: new Date().toISOString() })
+        .update({
+          name: companyInfo.name,
+          settings: updatedSettings,
+          updated_at: new Date().toISOString(),
+        })
         .eq("id", organizationId);
 
       if (error) throw error;
 
-      showToast("✓ Configuration de l'Agent IA enregistrée avec succès !");
+      setOrganizationName(companyInfo.name);
+      showToast("✓ Configuration enregistrée et synchronisée avec succès !");
     } catch (err: any) {
       alert(`Erreur enregistrement : ${err.message}`);
     } finally {
@@ -302,43 +480,194 @@ export default function AIAgentsConfigPage() {
     }
   };
 
-  // Save or Add Knowledge Entry
-  const handleSaveKnowledgeEntry = (e: React.FormEvent) => {
+  // --- DELIVERY ZONES CRUD HANDLERS ---
+  const handleSaveZone = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!knowledgeForm.title.trim() || !knowledgeForm.content.trim()) return;
+    if (!zoneForm.name.trim()) return;
 
-    if (editingKnowledge) {
-      setKnowledgeBase((prev) =>
-        prev.map((k) =>
-          k.id === editingKnowledge.id
-            ? { ...k, title: knowledgeForm.title, category: knowledgeForm.category, content: knowledgeForm.content }
-            : k
+    const districts = zoneForm.districtsRaw
+      .split(/,|\n/)
+      .map((d) => d.trim())
+      .filter(Boolean);
+
+    if (editingZone) {
+      setDeliveryZones((prev) =>
+        prev.map((z) =>
+          z.id === editingZone.id
+            ? {
+                ...z,
+                name: zoneForm.name.trim(),
+                districts,
+                fee: Number(zoneForm.fee),
+                delay: zoneForm.delay.trim(),
+                status: zoneForm.status,
+                notes: zoneForm.notes.trim(),
+              }
+            : z
         )
       );
-      showToast("✓ Connaissance modifiée");
+      showToast("✓ Zone de livraison modifiée");
     } else {
-      const newEntry: KnowledgeEntry = {
-        id: `kb-${Date.now()}`,
-        title: knowledgeForm.title.trim(),
-        category: knowledgeForm.category,
-        content: knowledgeForm.content.trim(),
-        status: "ACTIVE",
-        createdAt: new Date().toISOString(),
+      const newZone: DeliveryZone = {
+        id: `zone-${Date.now()}`,
+        name: zoneForm.name.trim(),
+        districts,
+        fee: Number(zoneForm.fee),
+        delay: zoneForm.delay.trim(),
+        status: zoneForm.status,
+        notes: zoneForm.notes.trim(),
       };
-      setKnowledgeBase((prev) => [newEntry, ...prev]);
-      showToast("✓ Nouvelle connaissance ajoutée");
+      setDeliveryZones((prev) => [newZone, ...prev]);
+      showToast("✓ Nouvelle zone de livraison ajoutée");
     }
 
-    setShowKnowledgeModal(false);
-    setEditingKnowledge(null);
-    setKnowledgeForm({ title: "", category: "FAQ", content: "" });
+    setShowZoneModal(false);
+    setEditingZone(null);
+    setZoneForm({ name: "", districtsRaw: "", fee: 1000, delay: "24h", status: "ACTIVE", notes: "" });
   };
 
-  // Delete Knowledge Entry
-  const handleDeleteKnowledge = (id: string) => {
-    if (!confirm("Voulez-vous vraiment supprimer cette connaissance ?")) return;
-    setKnowledgeBase((prev) => prev.filter((k) => k.id !== id));
-    showToast("🗑️ Connaissance supprimée");
+  const handleToggleZoneStatus = (id: string) => {
+    setDeliveryZones((prev) =>
+      prev.map((z) => (z.id === id ? { ...z, status: z.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE" } : z))
+    );
+    showToast("✓ Statut de la zone mis à jour");
+  };
+
+  const handleDeleteZone = (id: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer cette zone de livraison ?")) return;
+    setDeliveryZones((prev) => prev.filter((z) => z.id !== id));
+    showToast("🗑️ Zone supprimée");
+  };
+
+  // --- PAYMENT METHODS CRUD HANDLERS ---
+  const handleSavePayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentForm.name.trim()) return;
+
+    if (editingPayment) {
+      setPaymentMethods((prev) =>
+        prev.map((p) =>
+          p.id === editingPayment.id
+            ? {
+                ...p,
+                name: paymentForm.name.trim(),
+                identifier: paymentForm.identifier.trim(),
+                instructions: paymentForm.instructions.trim(),
+                status: paymentForm.status,
+                notes: paymentForm.notes.trim(),
+              }
+            : p
+        )
+      );
+      showToast("✓ Moyen de paiement modifié");
+    } else {
+      const newPayment: PaymentMethodConfig = {
+        id: `pay-${Date.now()}`,
+        name: paymentForm.name.trim(),
+        identifier: paymentForm.identifier.trim(),
+        instructions: paymentForm.instructions.trim(),
+        status: paymentForm.status,
+        notes: paymentForm.notes.trim(),
+      };
+      setPaymentMethods((prev) => [newPayment, ...prev]);
+      showToast("✓ Moyen de paiement ajouté");
+    }
+
+    setShowPaymentModal(false);
+    setEditingPayment(null);
+    setPaymentForm({ name: "", identifier: "", instructions: "", status: "ACTIVE", notes: "" });
+  };
+
+  const handleDeletePayment = (id: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer ce moyen de paiement ?")) return;
+    setPaymentMethods((prev) => prev.filter((p) => p.id !== id));
+    showToast("🗑️ Moyen de paiement supprimé");
+  };
+
+  // --- FAQ CRUD HANDLERS ---
+  const handleSaveFaq = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!faqForm.question.trim() || !faqForm.answer.trim()) return;
+
+    if (editingFaq) {
+      setFaqs((prev) =>
+        prev.map((f) =>
+          f.id === editingFaq.id
+            ? {
+                ...f,
+                question: faqForm.question.trim(),
+                answer: faqForm.answer.trim(),
+                category: faqForm.category.trim(),
+                status: faqForm.status,
+              }
+            : f
+        )
+      );
+      showToast("✓ FAQ modifiée");
+    } else {
+      const newFaq: FAQEntry = {
+        id: `faq-${Date.now()}`,
+        question: faqForm.question.trim(),
+        answer: faqForm.answer.trim(),
+        category: faqForm.category.trim(),
+        status: faqForm.status,
+      };
+      setFaqs((prev) => [newFaq, ...prev]);
+      showToast("✓ Nouvelle FAQ ajoutée");
+    }
+
+    setShowFaqModal(false);
+    setEditingFaq(null);
+    setFaqForm({ question: "", answer: "", category: "Général", status: "ACTIVE" });
+  };
+
+  const handleDeleteFaq = (id: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer cette FAQ ?")) return;
+    setFaqs((prev) => prev.filter((f) => f.id !== id));
+    showToast("🗑️ FAQ supprimée");
+  };
+
+  // --- POLICY CRUD HANDLERS ---
+  const handleSavePolicy = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!policyForm.title.trim() || !policyForm.content.trim()) return;
+
+    if (editingPolicy) {
+      setPolicies((prev) =>
+        prev.map((p) =>
+          p.id === editingPolicy.id
+            ? {
+                ...p,
+                title: policyForm.title.trim(),
+                content: policyForm.content.trim(),
+                status: policyForm.status,
+                updatedAt: new Date().toISOString(),
+              }
+            : p
+        )
+      );
+      showToast("✓ Politique modifiée");
+    } else {
+      const newPolicy: PolicyEntry = {
+        id: `pol-${Date.now()}`,
+        title: policyForm.title.trim(),
+        content: policyForm.content.trim(),
+        status: policyForm.status,
+        updatedAt: new Date().toISOString(),
+      };
+      setPolicies((prev) => [newPolicy, ...prev]);
+      showToast("✓ Nouvelle politique ajoutée");
+    }
+
+    setShowPolicyModal(false);
+    setEditingPolicy(null);
+    setPolicyForm({ title: "", content: "", status: "ACTIVE" });
+  };
+
+  const handleDeletePolicy = (id: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer cette politique ?")) return;
+    setPolicies((prev) => prev.filter((p) => p.id !== id));
+    showToast("🗑️ Politique supprimée");
   };
 
   // Run Real Anthropic Agent Test
@@ -386,11 +715,6 @@ export default function AIAgentsConfigPage() {
       setIsExecutingTest(false);
     }
   };
-
-  const filteredKnowledge = knowledgeBase.filter((k) => {
-    if (knowledgeCategoryFilter === "ALL") return true;
-    return k.category === knowledgeCategoryFilter;
-  });
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto animate-fade-in-up pb-12">
@@ -460,7 +784,7 @@ export default function AIAgentsConfigPage() {
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                Enregistrer
+                Enregistrer la Config
               </>
             )}
           </button>
@@ -487,7 +811,7 @@ export default function AIAgentsConfigPage() {
         </div>
       </div>
 
-      {/* 6 CONFIGURATION SECTIONS */}
+      {/* CONFIGURATION SECTIONS */}
       <div className="space-y-4">
         {/* SECTION 1: IDENTITÉ & COMPORTEMENT */}
         <div className="bg-[#12121A] border border-[#181824] rounded-2xl overflow-hidden">
@@ -578,19 +902,15 @@ export default function AIAgentsConfigPage() {
                   rows={3}
                   value={identityConfig.customInstructions}
                   onChange={(e) => setIdentityConfig({ ...identityConfig, customInstructions: e.target.value })}
-                  placeholder="Ex: Toujours demander la ville de livraison avant de confirmer le prix..."
+                  placeholder="Ex: Toujours demander le quartier exact de livraison avant de valider le tarif..."
                   className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-sans"
                 />
-                <p className="text-[11px] text-gray-400 mt-1 flex items-center gap-1 font-mono">
-                  <Lock className="w-3 h-3 text-[#7B61FF]" />
-                  Les garde-fous fondamentaux et la sécurité restent toujours appliqués par le système.
-                </p>
               </div>
             </div>
           )}
         </div>
 
-        {/* SECTION 2: BASE DE CONNAISSANCES (VRAIE FONCTIONNALITÉ CRUD) */}
+        {/* SECTION 2: BASE DE CONNAISSANCES MÉTIER (5 CATÉGORIES INTERACTIVES & STRUCTURÉES) */}
         <div className="bg-[#12121A] border border-[#181824] rounded-2xl overflow-hidden">
           <button
             onClick={() => toggleSection("knowledge")}
@@ -600,83 +920,628 @@ export default function AIAgentsConfigPage() {
               <BrainCircuit className="w-5 h-5 text-blue-400" />
               <div>
                 <h3 className="font-bold text-white text-base">2. Base de Connaissances Métier (CRUD)</h3>
-                <p className="text-xs text-gray-400">Informations stables sur votre entreprise, livraisons, paiements et FAQ</p>
+                <p className="text-xs text-gray-400">
+                  Configuration de l'Entreprise, Zones de livraison, Moyens de paiement, FAQ et Politiques
+                </p>
               </div>
             </div>
             {openSections.knowledge ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
           </button>
 
           {openSections.knowledge && (
-            <div className="p-6 space-y-4">
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-[#181824] pb-4">
-                <div className="flex items-center gap-1 overflow-x-auto font-mono text-xs">
-                  {["ALL", "ENTREPRISE", "LIVRAISON", "PAIEMENT", "FAQ", "POLITIQUES"].map((cat) => (
+            <div className="p-6 space-y-6">
+              {/* CATEGORY TABS NAVIGATION */}
+              <div className="flex items-center gap-2 border-b border-[#181824] pb-3 overflow-x-auto">
+                {[
+                  { id: "ENTREPRISE", label: "ENTREPRISE", icon: Building2 },
+                  { id: "LIVRAISON", label: "LIVRAISON", icon: Truck },
+                  { id: "PAIEMENT", label: "PAIEMENT", icon: CreditCard },
+                  { id: "FAQ", label: "FAQ", icon: HelpCircle },
+                  { id: "POLITIQUES", label: "POLITIQUES", icon: FileCheck },
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeKnowledgeTab === tab.id;
+                  return (
                     <button
-                      key={cat}
-                      onClick={() => setKnowledgeCategoryFilter(cat)}
-                      className={`px-3 py-1.5 rounded-lg transition-all ${
-                        knowledgeCategoryFilter === cat
-                          ? "bg-[#7B61FF] text-white font-bold"
-                          : "bg-[#181824] text-gray-400 hover:text-white"
+                      key={tab.id}
+                      onClick={() => setActiveKnowledgeTab(tab.id as any)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl font-mono text-xs font-bold transition-all whitespace-nowrap ${
+                        isActive
+                          ? "bg-[#7B61FF] text-white shadow-lg shadow-[#7B61FF]/20"
+                          : "bg-[#181824] text-gray-400 hover:text-white hover:bg-[#202030]"
                       }`}
                     >
-                      {cat === "ALL" ? "Toutes" : cat}
+                      <Icon className="w-4 h-4" />
+                      {tab.label}
                     </button>
-                  ))}
-                </div>
-
-                <button
-                  onClick={() => {
-                    setEditingKnowledge(null);
-                    setKnowledgeForm({ title: "", category: "FAQ", content: "" });
-                    setShowKnowledgeModal(true);
-                  }}
-                  className="flex items-center justify-center gap-2 px-3.5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                  Ajouter une Connaissance
-                </button>
+                  );
+                })}
               </div>
 
-              {/* KNOWLEDGE LIST */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredKnowledge.map((k) => (
-                  <div key={k.id} className="bg-[#181824] border border-[#282838] p-4 rounded-xl space-y-2 relative group">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-white text-sm">{k.title}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30">
-                        {k.category}
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-300 whitespace-pre-wrap">{k.content}</p>
-                    <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                      <span className="text-[10px] text-gray-500 font-mono">
-                        {new Date(k.createdAt).toLocaleDateString("fr-FR")}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            setEditingKnowledge(k);
-                            setKnowledgeForm({ title: k.title, category: k.category, content: k.content });
-                            setShowKnowledgeModal(true);
-                          }}
-                          className="p-1 text-gray-400 hover:text-white"
-                          title="Éditer"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteKnowledge(k.id)}
-                          className="p-1 text-gray-400 hover:text-red-400"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+              {/* TAB 1: ENTREPRISE */}
+              {activeKnowledgeTab === "ENTREPRISE" && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-[#181824] pb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-[#7B61FF]" />
+                        Identité Métier de l'Entreprise
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        Synchronisé en temps réel avec les paramètres de l'organisation
+                      </p>
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Nom de l'entreprise</label>
+                      <input
+                        type="text"
+                        value={companyInfo.name}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, name: e.target.value })}
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Secteur d'activité</label>
+                      <input
+                        type="text"
+                        value={companyInfo.sector}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, sector: e.target.value })}
+                        placeholder="Ex: E-Commerce / Cosmetique / Beauté"
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Pays</label>
+                      <input
+                        type="text"
+                        value={companyInfo.country}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, country: e.target.value })}
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Ville siège</label>
+                      <input
+                        type="text"
+                        value={companyInfo.city}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, city: e.target.value })}
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Adresse physique</label>
+                      <input
+                        type="text"
+                        value={companyInfo.address}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, address: e.target.value })}
+                        placeholder="Ex: Secteur 13, Zogona"
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Téléphone de contact</label>
+                      <input
+                        type="text"
+                        value={companyInfo.phone}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, phone: e.target.value })}
+                        placeholder="+226 70 00 00 00"
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Email professionnel</label>
+                      <input
+                        type="email"
+                        value={companyInfo.email}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, email: e.target.value })}
+                        placeholder="contact@entreprise.com"
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-gray-300 block mb-1">Horaires d'ouverture</label>
+                      <input
+                        type="text"
+                        value={companyInfo.hours}
+                        onChange={(e) => setCompanyInfo({ ...companyInfo, hours: e.target.value })}
+                        placeholder="Lun - Sam : 08h00 - 20h00"
+                        className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-gray-300 block mb-1">Description de l'entreprise</label>
+                    <textarea
+                      rows={3}
+                      value={companyInfo.description}
+                      onChange={(e) => setCompanyInfo({ ...companyInfo, description: e.target.value })}
+                      placeholder="Résumez l'activité et l'engagement de votre entreprise..."
+                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-gray-300 block mb-1">Informations complémentaires</label>
+                    <textarea
+                      rows={2}
+                      value={companyInfo.additionalInfo}
+                      onChange={(e) => setCompanyInfo({ ...companyInfo, additionalInfo: e.target.value })}
+                      placeholder="Toute consigne ou note sur l'entreprise destinée à l'Agent IA..."
+                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: LIVRAISON (ZONES DE LIVRAISON STRUCTURÉES) */}
+              {activeKnowledgeTab === "LIVRAISON" && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Truck className="w-4 h-4 text-emerald-400" />
+                        Configuration Structurée des Zones de Livraison
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        Source de vérité métier utilisée directement par le tool <code className="text-emerald-400 font-mono">check_delivery_zone</code>
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setEditingZone(null);
+                        setZoneForm({ name: "", districtsRaw: "", fee: 1000, delay: "24h", status: "ACTIVE", notes: "" });
+                        setShowZoneModal(true);
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nouvelle Zone
+                    </button>
+                  </div>
+
+                  {deliveryZones.length === 0 ? (
+                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
+                      <Truck className="w-10 h-10 text-gray-500 mx-auto" />
+                      <div className="space-y-1">
+                        <h5 className="text-white font-bold text-sm">Aucune zone de livraison configurée</h5>
+                        <p className="text-xs text-gray-400 max-w-md mx-auto">
+                          Définissez vos zones réelles (ex: Ouaga Centre, Kossodo, Bobo) avec les quartiers rattachés, le tarif exact en XOF et le délai.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingZone(null);
+                          setZoneForm({ name: "", districtsRaw: "", fee: 1000, delay: "24h", status: "ACTIVE", notes: "" });
+                          setShowZoneModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Ajouter une zone
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto border border-[#282838] rounded-2xl">
+                      <table className="w-full text-left text-xs font-sans">
+                        <thead className="bg-[#14141E] text-gray-400 uppercase font-mono text-[11px] border-b border-[#282838]">
+                          <tr>
+                            <th className="p-3.5">Zone</th>
+                            <th className="p-3.5">Quartiers Inclus</th>
+                            <th className="p-3.5">Frais (XOF)</th>
+                            <th className="p-3.5">Délai</th>
+                            <th className="p-3.5">Statut</th>
+                            <th className="p-3.5 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#282838] bg-[#181824]">
+                          {deliveryZones.map((zone) => (
+                            <tr key={zone.id} className="hover:bg-[#202030] transition-all">
+                              <td className="p-3.5 font-bold text-white whitespace-nowrap">
+                                {zone.name}
+                                {zone.notes && (
+                                  <span className="block text-[10px] text-gray-400 font-normal">{zone.notes}</span>
+                                )}
+                              </td>
+                              <td className="p-3.5 max-w-xs">
+                                <div className="flex flex-wrap gap-1">
+                                  {zone.districts.map((d, i) => (
+                                    <span key={i} className="px-2 py-0.5 bg-[#252535] text-gray-300 rounded-md font-mono text-[11px] border border-white/5">
+                                      {d}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="p-3.5 font-mono font-bold text-emerald-400 whitespace-nowrap">
+                                {zone.fee === 0 ? "0 XOF (Gratuit)" : `${zone.fee.toLocaleString("fr-FR")} XOF`}
+                              </td>
+                              <td className="p-3.5 font-mono text-gray-300 whitespace-nowrap">{zone.delay}</td>
+                              <td className="p-3.5 whitespace-nowrap">
+                                <button
+                                  onClick={() => handleToggleZoneStatus(zone.id)}
+                                  className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-bold border transition-all ${
+                                    zone.status === "ACTIVE"
+                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                      : "bg-gray-500/10 text-gray-400 border-gray-500/30"
+                                  }`}
+                                >
+                                  {zone.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
+                                </button>
+                              </td>
+                              <td className="p-3.5 text-right whitespace-nowrap space-x-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingZone(zone);
+                                    setZoneForm({
+                                      name: zone.name,
+                                      districtsRaw: zone.districts.join(", "),
+                                      fee: zone.fee,
+                                      delay: zone.delay,
+                                      status: zone.status,
+                                      notes: zone.notes || "",
+                                    });
+                                    setShowZoneModal(true);
+                                  }}
+                                  className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
+                                  title="Modifier"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteZone(zone.id)}
+                                  className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: PAIEMENT (MOYENS DE PAIEMENT STRUCTURÉS) */}
+              {activeKnowledgeTab === "PAIEMENT" && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <CreditCard className="w-4 h-4 text-purple-400" />
+                        Moyens de Paiement Acceptés
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        Informations transmises au client par l'Agent IA lorsqu'il demande comment régler
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setEditingPayment(null);
+                        setPaymentForm({ name: "", identifier: "", instructions: "", status: "ACTIVE", notes: "" });
+                        setShowPaymentModal(true);
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl transition-all shadow-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Ajouter un moyen de paiement
+                    </button>
+                  </div>
+
+                  {paymentMethods.length === 0 ? (
+                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
+                      <CreditCard className="w-10 h-10 text-gray-500 mx-auto" />
+                      <div className="space-y-1">
+                        <h5 className="text-white font-bold text-sm">Aucun moyen de paiement configuré</h5>
+                        <p className="text-xs text-gray-400 max-w-md mx-auto">
+                          Ajoutez vos moyens de paiement (Orange Money, Wave, Paiement à la livraison) avec les numéros de dépôt et instructions.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingPayment(null);
+                          setPaymentForm({ name: "", identifier: "", instructions: "", status: "ACTIVE", notes: "" });
+                          setShowPaymentModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Ajouter
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {paymentMethods.map((pm) => (
+                        <div key={pm.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3 relative">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-sm flex items-center gap-2">
+                              <CreditCard className="w-4 h-4 text-purple-400" />
+                              {pm.name}
+                            </span>
+                            <span
+                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
+                                pm.status === "ACTIVE"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : "bg-gray-500/10 text-gray-400 border-gray-500/30"
+                              }`}
+                            >
+                              {pm.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1 bg-[#12121A] p-3 rounded-xl border border-white/5 text-xs font-mono">
+                            <div className="text-gray-400 text-[11px]">Numéro / Identifiant :</div>
+                            <div className="text-white font-bold text-sm">{pm.identifier}</div>
+                          </div>
+
+                          {pm.instructions && (
+                            <p className="text-xs text-gray-300 bg-[#14141E] p-2.5 rounded-xl border border-white/5">
+                              {pm.instructions}
+                            </p>
+                          )}
+
+                          <div className="flex items-center justify-between pt-2 border-t border-white/5">
+                            <span className="text-[10px] text-gray-500">{pm.notes}</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingPayment(pm);
+                                  setPaymentForm({
+                                    name: pm.name,
+                                    identifier: pm.identifier,
+                                    instructions: pm.instructions,
+                                    status: pm.status,
+                                    notes: pm.notes || "",
+                                  });
+                                  setShowPaymentModal(true);
+                                }}
+                                className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePayment(pm.id)}
+                                className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: FAQ (FOIRE AUX QUESTIONS) */}
+              {activeKnowledgeTab === "FAQ" && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <HelpCircle className="w-4 h-4 text-cyan-400" />
+                        Foire Aux Questions (FAQ)
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        Questions fréquentes et leurs réponses officielles accessibles dans le contexte de l'Agent IA
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setEditingFaq(null);
+                        setFaqForm({ question: "", answer: "", category: "Général", status: "ACTIVE" });
+                        setShowFaqModal(true);
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl transition-all shadow-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Ajouter une FAQ
+                    </button>
+                  </div>
+
+                  {faqs.length === 0 ? (
+                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
+                      <HelpCircle className="w-10 h-10 text-gray-500 mx-auto" />
+                      <div className="space-y-1">
+                        <h5 className="text-white font-bold text-sm">Aucune FAQ configurée</h5>
+                        <p className="text-xs text-gray-400 max-w-md mx-auto">
+                          Ajoutez les questions les plus fréquemment posées par vos clients pour que l'Agent y réponde parfaitement.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingFaq(null);
+                          setFaqForm({ question: "", answer: "", category: "Général", status: "ACTIVE" });
+                          setShowFaqModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Ajouter
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {faqs.map((faq) => (
+                        <div key={faq.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-sm flex items-center gap-2">
+                              ❓ {faq.question}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30">
+                                {faq.category}
+                              </span>
+                              <span
+                                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
+                                  faq.status === "ACTIVE"
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                    : "bg-gray-500/10 text-gray-400 border-gray-500/30"
+                                }`}
+                              >
+                                {faq.status === "ACTIVE" ? "Actif" : "Archivé"}
+                              </span>
+                            </div>
+                          </div>
+
+                          <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
+                            💬 {faq.answer}
+                          </p>
+
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              onClick={() => {
+                                setEditingFaq(faq);
+                                setFaqForm({
+                                  question: faq.question,
+                                  answer: faq.answer,
+                                  category: faq.category,
+                                  status: faq.status,
+                                });
+                                setShowFaqModal(true);
+                              }}
+                              className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteFaq(faq.id)}
+                              className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 5: POLITIQUES */}
+              {activeKnowledgeTab === "POLITIQUES" && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <FileCheck className="w-4 h-4 text-amber-400" />
+                        Politiques & Conditions Métier
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        Politiques de retour, échange, remboursement et conditions d'expédition
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setEditingPolicy(null);
+                        setPolicyForm({ title: "", content: "", status: "ACTIVE" });
+                        setShowPolicyModal(true);
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl transition-all shadow-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Ajouter une politique
+                    </button>
+                  </div>
+
+                  {policies.length === 0 ? (
+                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
+                      <FileCheck className="w-10 h-10 text-gray-500 mx-auto" />
+                      <div className="space-y-1">
+                        <h5 className="text-white font-bold text-sm">Aucune politique configurée</h5>
+                        <p className="text-xs text-gray-400 max-w-md mx-auto">
+                          Définissez vos règles officielles (Ex: Politique de retour sous 7 jours, Conditions de remboursement).
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingPolicy(null);
+                          setPolicyForm({ title: "", content: "", status: "ACTIVE" });
+                          setShowPolicyModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Ajouter
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {policies.map((pol) => (
+                        <div key={pol.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-sm flex items-center gap-2">
+                              📋 {pol.title}
+                            </span>
+                            <span
+                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
+                                pol.status === "ACTIVE"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : "bg-gray-500/10 text-gray-400 border-gray-500/30"
+                              }`}
+                            >
+                              {pol.status === "ACTIVE" ? "Actif" : "Archivé"}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
+                            {pol.content}
+                          </p>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-white/5 font-mono text-[10px] text-gray-500">
+                            <span>Modifié le {new Date(pol.updatedAt).toLocaleDateString("fr-FR")}</span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingPolicy(pol);
+                                  setPolicyForm({
+                                    title: pol.title,
+                                    content: pol.content,
+                                    status: pol.status,
+                                  });
+                                  setShowPolicyModal(true);
+                                }}
+                                className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
+                                title="Modifier"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeletePolicy(pol.id)}
+                                className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -731,7 +1596,7 @@ export default function AIAgentsConfigPage() {
                     { key: "search_products", label: "Rechercher des produits", desc: "Consultation catalogue SSOT" },
                     { key: "check_price", label: "Vérifier prix & promotions", desc: "Consultation tarifs" },
                     { key: "check_stock", label: "Vérifier le stock disponible", desc: "Vérification inventaire" },
-                    { key: "check_zones", label: "Vérifier zones de livraison", desc: "Frais & zones" },
+                    { key: "check_zones", label: "Vérifier zones de livraison", desc: "Frais & zones structurées" },
                     { key: "lookup_customer", label: "Consulter profil client CRM", desc: "Historique & préférences" },
                     { key: "lookup_orders", label: "Consulter les commandes", desc: "Statut des commandes" },
                     { key: "lookup_delivery", label: "Consulter statut livraison", desc: "Suivi des livreurs" },
@@ -801,12 +1666,12 @@ export default function AIAgentsConfigPage() {
           {openSections.guardrails && (
             <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               {[
+                "Ne jamais inventer de tarif de livraison (utiliser strictement les zones configurées)",
                 "Ne jamais inventer de prix non présent dans le catalogue SSOT",
                 "Ne jamais inventer de stock disponible",
                 "Ne jamais inventer de mode de paiement non configuré",
                 "Ne jamais inventer de commande fictive",
                 "Ne jamais inventer de délais de livraison irréalistes",
-                "Ne jamais promettre de résultats de santé ou médicaux",
                 "Respecter les demandes de désinscription des clients",
                 "Respecter les limites strictes de l'organisation",
               ].map((rule, idx) => (
@@ -923,22 +1788,196 @@ export default function AIAgentsConfigPage() {
         </div>
       </div>
 
-      {/* KNOWLEDGE ADD / EDIT MODAL */}
-      {showKnowledgeModal && (
+      {/* MODAL 1: DELIVERY ZONE ADD / EDIT */}
+      {showZoneModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
-            <h3 className="text-lg font-bold text-white">
-              {editingKnowledge ? "Modifier la Connaissance" : "Ajouter une Connaissance Métier"}
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <Truck className="w-5 h-5 text-emerald-400" />
+              {editingZone ? "Modifier la Zone de Livraison" : "Nouvelle Zone de Livraison"}
             </h3>
 
-            <form onSubmit={handleSaveKnowledgeEntry} className="space-y-4">
+            <form onSubmit={handleSaveZone} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Titre de la connaissance</label>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Nom de la Zone</label>
                 <input
                   type="text"
-                  placeholder="Ex: Conditions de remboursement"
-                  value={knowledgeForm.title}
-                  onChange={(e) => setKnowledgeForm({ ...knowledgeForm, title: e.target.value })}
+                  placeholder="Ex: Ouaga Centre, Kossodo, Bobo-Dioulasso"
+                  value={zoneForm.name}
+                  onChange={(e) => setZoneForm({ ...zoneForm, name: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Quartiers Inclus (séparés par une virgule)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Ex: Koulouba, Paspanga, Gounghin, Zogona..."
+                  value={zoneForm.districtsRaw}
+                  onChange={(e) => setZoneForm({ ...zoneForm, districtsRaw: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Frais de livraison (XOF)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="100"
+                    value={zoneForm.fee}
+                    onChange={(e) => setZoneForm({ ...zoneForm, fee: Number(e.target.value) })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
+                    required
+                  />
+                  <span className="text-[10px] text-gray-400 mt-1 block">0 = Gratuit, 1000, 1500, 2000, etc.</span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Délai indicatif</label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 24h, Même jour, 48h"
+                    value={zoneForm.delay}
+                    onChange={(e) => setZoneForm({ ...zoneForm, delay: e.target.value })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Notes / Indications pour l'Agent</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Point de rdv possible si hors zone"
+                  value={zoneForm.notes}
+                  onChange={(e) => setZoneForm({ ...zoneForm, notes: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowZoneModal(false)}
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all"
+                >
+                  Enregistrer la zone
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: PAYMENT METHOD ADD / EDIT */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-purple-400" />
+              {editingPayment ? "Modifier le Moyen de Paiement" : "Ajouter un Moyen de Paiement"}
+            </h3>
+
+            <form onSubmit={handleSavePayment} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Nom du Moyen de Paiement</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Orange Money, Moov Money, Wave, Espèces"
+                  value={paymentForm.name}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, name: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Numéro / Identifiant commercial (Pas de secrets sensibles !)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: +226 70 00 00 00 ou À la livraison"
+                  value={paymentForm.identifier}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, identifier: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Instructions pour le Client</label>
+                <textarea
+                  rows={3}
+                  placeholder="Ex: Effectuer le dépôt sur le numéro puis envoyer la capture de confirmation WhatsApp..."
+                  value={paymentForm.instructions}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, instructions: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Notes internes</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Titulaire: SARL WillShop"
+                  value={paymentForm.notes}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold transition-all"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: FAQ ADD / EDIT */}
+      {showFaqModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-cyan-400" />
+              {editingFaq ? "Modifier la FAQ" : "Ajouter une Question / Réponse"}
+            </h3>
+
+            <form onSubmit={handleSaveFaq} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Question Fréquente</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Les produits sont-ils authentiques ?"
+                  value={faqForm.question}
+                  onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
                   className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
                   required
                 />
@@ -946,28 +1985,23 @@ export default function AIAgentsConfigPage() {
 
               <div>
                 <label className="text-xs font-semibold text-gray-300 block mb-1">Catégorie</label>
-                <select
-                  value={knowledgeForm.category}
-                  onChange={(e) => setKnowledgeForm({ ...knowledgeForm, category: e.target.value as any })}
+                <input
+                  type="text"
+                  placeholder="Ex: Produits, Livraison, Authentification, Commandes"
+                  value={faqForm.category}
+                  onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
                   className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                >
-                  <option value="ENTREPRISE">Entreprise</option>
-                  <option value="LIVRAISON">Livraison</option>
-                  <option value="PAIEMENT">Paiement</option>
-                  <option value="FAQ">FAQ</option>
-                  <option value="POLITIQUES">Politiques</option>
-                  <option value="AUTRES">Autres</option>
-                </select>
+                />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Contenu détaillé</label>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Réponse Officielle</label>
                 <textarea
                   rows={4}
-                  placeholder="Expliquez clairement l'information métier que l'Agent IA doit connaître..."
-                  value={knowledgeForm.content}
-                  onChange={(e) => setKnowledgeForm({ ...knowledgeForm, content: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-sans"
+                  placeholder="Rédigez la réponse précise que l'Agent IA doit donner..."
+                  value={faqForm.answer}
+                  onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
                   required
                 />
               </div>
@@ -975,14 +2009,68 @@ export default function AIAgentsConfigPage() {
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowKnowledgeModal(false)}
+                  onClick={() => setShowFaqModal(false)}
                   className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-semibold transition-all"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold transition-all"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: POLICY ADD / EDIT */}
+      {showPolicyModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <FileCheck className="w-5 h-5 text-amber-400" />
+              {editingPolicy ? "Modifier la Politique" : "Ajouter une Politique Commerciale"}
+            </h3>
+
+            <form onSubmit={handleSavePolicy} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Titre de la Politique</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Politique de retour & remboursement"
+                  value={policyForm.title}
+                  onChange={(e) => setPolicyForm({ ...policyForm, title: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Contenu Réglementaire</label>
+                <textarea
+                  rows={5}
+                  placeholder="Détaillez les conditions, délais et procédures de cette politique..."
+                  value={policyForm.content}
+                  onChange={(e) => setPolicyForm({ ...policyForm, content: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPolicyModal(false)}
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold transition-all"
                 >
                   Enregistrer
                 </button>

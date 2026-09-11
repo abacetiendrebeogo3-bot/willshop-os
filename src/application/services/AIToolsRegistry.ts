@@ -116,7 +116,8 @@ export class AIToolsRegistry {
   async executeTool(
     name: string,
     args: any,
-    organizationId: string
+    organizationId: string,
+    aiAgentConfig?: any
   ): Promise<{ result: any; triggerHandoff?: boolean }> {
     try {
       switch (name) {
@@ -140,14 +141,44 @@ export class AIToolsRegistry {
         }
 
         case 'check_delivery_zone': {
-          const city = (args.city || '').toLowerCase();
+          const queryCity = (args.city || '').toLowerCase().trim();
+          const queryDistrict = (args.district || '').toLowerCase().trim();
+          const searchQuery = `${queryDistrict} ${queryCity}`.trim();
+
+          const configuredZones = (aiAgentConfig?.delivery_zones || []) as any[];
+
+          // Search in real configured delivery zones FIRST
+          const matchedZone = configuredZones.find((z: any) => {
+            if (z.status === 'INACTIVE') return false;
+            const nameMatch = z.name && (z.name.toLowerCase().includes(searchQuery) || searchQuery.includes(z.name.toLowerCase()));
+            const districtMatch = Array.isArray(z.districts) && z.districts.some((d: string) =>
+              searchQuery.includes(d.toLowerCase()) || d.toLowerCase().includes(queryCity) || (queryDistrict && d.toLowerCase().includes(queryDistrict))
+            );
+            return nameMatch || districtMatch;
+          });
+
+          if (matchedZone) {
+            return {
+              result: {
+                city: args.city,
+                district: args.district || matchedZone.name,
+                zoneName: matchedZone.name,
+                deliveryFee: Number(matchedZone.fee),
+                estimatedDelay: matchedZone.delay || '24h',
+                available: true,
+                notes: matchedZone.notes || '',
+              },
+            };
+          }
+
+          // Fallback if no specific zone matched
           let fee = 1500;
           let delay = '24 heures';
 
-          if (city.includes('ouagadougou') || city.includes('ouaga')) {
+          if (queryCity.includes('ouagadougou') || queryCity.includes('ouaga')) {
             fee = 1000;
             delay = '2 à 4 heures';
-          } else if (city.includes('bobo')) {
+          } else if (queryCity.includes('bobo')) {
             fee = 2000;
             delay = '24 heures';
           }

@@ -90,14 +90,55 @@ export class SalesAgentService {
     const agentTone = aiAgentConfig?.tone || 'Professionnel & Chaleureux';
     const customInstructions = aiAgentConfig?.custom_instructions || aiAgentConfig?.presentation || '';
 
+    const companyInfo = aiAgentConfig?.company_info;
+    const paymentMethods = (aiAgentConfig?.payment_methods || []).filter((p: any) => p.status !== 'INACTIVE');
+    const faqs = (aiAgentConfig?.faqs || []).filter((f: any) => f.status !== 'ARCHIVED');
+    const policies = (aiAgentConfig?.policies || []).filter((p: any) => p.status !== 'INACTIVE');
+    const knowledgeBase = (aiAgentConfig?.knowledge_base || []).filter((k: any) => k.status !== 'ARCHIVED');
+
+    const companyPrompt = companyInfo
+      ? `=== IDENTITÉ ENTREPRISE ===
+Nom: ${companyInfo.name || 'WILLShop OS'}
+Secteur: ${companyInfo.sector || 'Cosmétique & Produits de Beauté'}
+Ville: ${companyInfo.city || 'Ouagadougou'}, ${companyInfo.country || 'Burkina Faso'}
+Adresse: ${companyInfo.address || 'Koulouba'}
+Horaires: ${companyInfo.hours || 'Du Lundi au Samedi: 08h00 - 20h00'}
+Description: ${companyInfo.description || ''}
+`
+      : '';
+
+    const paymentsPrompt = paymentMethods.length > 0
+      ? `=== MOYENS DE PAIEMENT ACCEPTÉS ===
+${paymentMethods.map((p: any) => `- ${p.name}: ${p.identifier} (${p.instructions || ''})`).join('\n')}
+`
+      : '';
+
+    const faqsPrompt = faqs.length > 0 || knowledgeBase.length > 0
+      ? `=== FOIRE AUX QUESTIONS & CONNAISSANCES MÉTIER ===
+${[...faqs, ...knowledgeBase].map((k: any) => `[${k.category || 'FAQ'}] ${k.title || k.question}: ${k.content || k.answer}`).join('\n')}
+`
+      : '';
+
+    const policiesPrompt = policies.length > 0
+      ? `=== POLITIQUES DE LA BOUTIQUE ===
+${policies.map((p: any) => `[${p.title}]: ${p.content}`).join('\n')}
+`
+      : '';
+
     const systemPrompt = `Tu es ${agentName}, l'Agent Commercial Virtuel de WILLShop OS.
 Ton de communication : ${agentTone}.
 ${customInstructions ? `INSTRUCTIONS PARTICULIÈRES :\n${customInstructions}\n` : ''}
+${companyPrompt}
+${paymentsPrompt}
+${faqsPrompt}
+${policiesPrompt}
+
 REGLES ABSOLUES :
 1. Présente toujours les produits avec leurs prix exacts du catalogue.
 2. Ne jamais inventer de prix ni de stock.
-3. Si le client veut commander ou demande le statut d'une commande, utilise les outils mis à ta disposition.
-4. Si le client demande un conseiller humain, réponds poliment et utilise l'outil escalate_to_human.`;
+3. Si le client demande la livraison dans une zone/quartier, utilise l'outil check_delivery_zone.
+4. Si le client veut commander ou demande le statut d'une commande, utilise les outils mis à ta disposition.
+5. Si le client demande un conseiller humain, réponds poliment et utilise l'outil escalate_to_human.`;
 
     const result = await (this.aiGateway as AnthropicAIGateway).generateCompletion({
       agentName,
@@ -120,7 +161,7 @@ REGLES ABSOLUES :
     // Handle tool execution if LLM requested a tool call
     if (result.toolCalls && result.toolCalls.length > 0 && this.toolsRegistry && organizationId) {
       for (const toolCall of result.toolCalls) {
-        const execRes = await this.toolsRegistry.executeTool(toolCall.name, toolCall.input, organizationId);
+        const execRes = await this.toolsRegistry.executeTool(toolCall.name, toolCall.input, organizationId, aiAgentConfig);
         if (execRes.triggerHandoff) {
           triggerHandoff = true;
         }
