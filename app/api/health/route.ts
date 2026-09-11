@@ -108,59 +108,17 @@ export async function GET() {
   if (evoUrl && evoKey) {
     try {
       const instanceName = 'ws_org_27f3fcc3402b';
-      const webhookTargetUrl = 'https://willshop-os.vercel.app/api/webhooks/whatsapp/evolution';
-
-      // 1. Connection State
       const connRes = await fetch(`${evoUrl}/instance/connectionState/${instanceName}`, {
         headers: { apikey: evoKey },
       });
       const connText = await connRes.text().catch(() => '');
 
-      // 2. Webhook Find
-      const findRes = await fetch(`${evoUrl}/webhook/find/${instanceName}`, {
-        headers: { apikey: evoKey },
-      });
-      const findText = await findRes.text().catch(() => '');
-
-      // 3. Webhook Set (re-configure webhook)
-      const setRes = await fetch(`${evoUrl}/webhook/set/${instanceName}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: evoKey,
-        },
-        body: JSON.stringify({
-          webhook: {
-            enabled: true,
-            url: webhookTargetUrl,
-            byEvents: false,
-            base64: false,
-            events: [
-              'MESSAGES_UPSERT',
-              'MESSAGES_UPDATE',
-              'CONNECTION_UPDATE',
-              'QRCODE_UPDATED',
-            ],
-          },
-        }),
-      });
-      const setText = await setRes.text().catch(() => '');
-
       evolutionCheck = {
-        status: connRes.ok && setRes.ok ? 'PASS' : 'FAIL',
+        status: connRes.ok ? 'PASS' : 'FAIL',
         instanceName,
         connectionState: {
           httpStatus: connRes.status,
           response: connText,
-        },
-        webhookFind: {
-          httpStatus: findRes.status,
-          response: findText,
-        },
-        webhookSet: {
-          httpStatus: setRes.status,
-          targetUrl: webhookTargetUrl,
-          response: setText,
         },
       };
     } catch (err: any) {
