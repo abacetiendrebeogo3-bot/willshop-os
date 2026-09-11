@@ -23,14 +23,14 @@ export class AnthropicAIGateway implements IAIGateway {
   constructor(apiKey?: string, defaultModel?: string) {
     const rawKey = apiKey || process.env.ANTHROPIC_API_KEY || '';
     this.apiKey = rawKey.trim().replace(/^["']|["']$/g, '');
-    this.defaultModel = (defaultModel || process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-latest').trim().replace(/^["']|["']$/g, '');
+    this.defaultModel = (defaultModel || process.env.ANTHROPIC_MODEL || 'claude-sonnet-5').trim().replace(/^["']|["']$/g, '');
   }
 
   async generateCompletion(
     request: AIModelRequest & { tools?: AnthropicToolDefinition[] }
   ): Promise<AIModelResponse & { toolCalls?: Array<{ id: string; name: string; input: any }> }> {
     if (!this.apiKey || !this.apiKey.trim()) {
-      console.error('AnthropicAIGateway: ANTHROPIC_API_KEY missing');
+      console.error('[AnthropicAIGateway Error] ANTHROPIC_API_KEY is missing or empty in environment variables.');
       throw new Error('BLOCKED — ANTHROPIC_API_KEY missing');
     }
 
@@ -67,7 +67,11 @@ export class AnthropicAIGateway implements IAIGateway {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        console.error(`Anthropic API error [${response.status}]:`, errorText);
+        console.error(`[AnthropicAIGateway API Error] HTTP ${response.status} ${response.statusText} | Model: ${this.defaultModel}`, {
+          httpStatus: response.status,
+          statusText: response.statusText,
+          errorBody: errorText,
+        });
         throw new Error(`Anthropic API HTTP ${response.status}: ${errorText || response.statusText}`);
       }
 
@@ -100,7 +104,11 @@ export class AnthropicAIGateway implements IAIGateway {
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
     } catch (err: any) {
-      console.error('AnthropicAIGateway exception:', err);
+      console.error('[AnthropicAIGateway Exception]', {
+        message: err.message,
+        model: this.defaultModel,
+        stack: err.stack,
+      });
       return {
         content: "Désolé, je rencontre une petite difficulté technique. Un conseiller commercial va prendre le relais.",
         promptTokens: 0,

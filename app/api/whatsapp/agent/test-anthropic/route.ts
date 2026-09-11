@@ -15,7 +15,7 @@ export async function GET() {
     }, { status: 400 });
   }
 
-  const model = process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
+  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
   try {
     const payload = {
