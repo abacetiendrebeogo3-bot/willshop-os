@@ -125,6 +125,7 @@ export async function GET() {
           },
           body: JSON.stringify({
             number: sendTo,
+            text: 'TEST OUTBOUND WILLSHOP 001',
             textMessage: {
               text: 'TEST OUTBOUND WILLSHOP 001',
             },
