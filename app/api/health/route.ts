@@ -113,6 +113,40 @@ export async function GET() {
       });
       const connText = await connRes.text().catch(() => '');
 
+      // Direct Outbound Test via Evolution sendText
+      let directOutboundTest: any = null;
+      const sendTo = '22672019524';
+      try {
+        const sendRes = await fetch(`${evoUrl}/message/sendText/${instanceName}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: evoKey,
+          },
+          body: JSON.stringify({
+            number: sendTo,
+            textMessage: {
+              text: 'TEST OUTBOUND WILLSHOP 001',
+            },
+          }),
+        });
+        const sendTextResp = await sendRes.text().catch(() => '');
+        let parsedJson: any = null;
+        try { parsedJson = JSON.parse(sendTextResp); } catch {}
+
+        directOutboundTest = {
+          httpStatus: sendRes.status,
+          destinationNumber: sendTo,
+          rawResponse: sendTextResp,
+          evolutionMessageId: parsedJson?.key?.id || parsedJson?.id || null,
+          remoteJid: parsedJson?.key?.remoteJid || null,
+          fromMe: parsedJson?.key?.fromMe ?? null,
+          status: parsedJson?.status || (sendRes.ok ? 'SENT' : 'FAILED'),
+        };
+      } catch (sendErr: any) {
+        directOutboundTest = { error: sendErr.message };
+      }
+
       evolutionCheck = {
         status: connRes.ok ? 'PASS' : 'FAIL',
         instanceName,
@@ -120,6 +154,7 @@ export async function GET() {
           httpStatus: connRes.status,
           response: connText,
         },
+        directOutboundTest,
       };
     } catch (err: any) {
       evolutionCheck = {
