@@ -334,7 +334,19 @@ export class WhatsAppApplicationService {
         aiConfig
       );
 
-      // 9. Save Outbound AI Response
+      // 9. Send Outbound Message via Provider Adapter FIRST
+      const sendResult = await this.providerAdapter.sendTextMessage(providerIdentity, {
+        toPhoneNumber: event.senderPhone,
+        messageText: aiResult.responseText,
+      });
+
+      const isSentOk = sendResult.status === 'SENT';
+
+      if (!isSentOk) {
+        console.error(`[OUTBOUND_WHATSAPP_FAILED] Evolution API send failed [${sendResult.errorCode}] for ${event.senderPhone}`);
+      }
+
+      // 10. Save Outbound AI Response with real status and external_message_id
       await this.supabase.from('messages').insert({
         organization_id: targetOrgId,
         conversation_id: conversationId,
@@ -344,13 +356,9 @@ export class WhatsAppApplicationService {
         sender_id: 'SALES_AI',
         message_type: 'TEXT',
         content: aiResult.responseText,
-        status: 'SENT',
-      });
-
-      // 10. Send Outbound Message via Provider Adapter
-      await this.providerAdapter.sendTextMessage(providerIdentity, {
-        toPhoneNumber: event.senderPhone,
-        messageText: aiResult.responseText,
+        external_message_id: isSentOk ? sendResult.externalMessageId : null,
+        status: isSentOk ? 'SENT' : 'FAILED',
+        error_code: isSentOk ? null : (sendResult.errorCode || 'OUTBOUND_FAILED'),
       });
 
       // Handle Handoff if triggered by AI
@@ -366,6 +374,15 @@ export class WhatsAppApplicationService {
           .from('conversations')
           .update({ conversation_mode: 'ESCALATED', assigned_agent: 'HUMAN' })
           .eq('id', conversationId);
+      }
+
+      if (!isSentOk) {
+        return {
+          status: 'SUCCESS',
+          message: `Message entrant enregistré. Échec envoi WhatsApp réel : ${sendResult.errorCode || 'OUTBOUND_FAILED'}`,
+          organizationId: targetOrgId,
+          conversationId,
+        };
       }
 
       return {

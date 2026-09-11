@@ -55,6 +55,7 @@ export class EvolutionWhatsAppAdapter implements IWhatsAppProvider {
         },
         body: JSON.stringify({
           number: cleanTo,
+          text: dto.messageText,
           textMessage: { text: dto.messageText },
         }),
       });
