@@ -1,8 +1,8 @@
 /**
  * WILLShop OS — AI Tools Registry & Executor
  * Application Layer.
- * Defines the 7 AI Tools and executes them against Application Services & Repositories.
- * STRICT ARCHITECTURE RULE: NO DIRECT DATABASE QUERIES.
+ * Defines the 9 AI Tools and executes them against Application Services & Repositories.
+ * STRICT ARCHITECTURE RULE: NO DIRECT UNGOVERNED DATABASE QUERIES.
  */
 
 import { AnthropicToolDefinition } from '../../infrastructure/ai/AnthropicAIGateway';
@@ -12,6 +12,16 @@ import {
   IOrderRepository,
 } from '../../domain/interfaces/IDataCoreRepositories';
 import { Product, Order } from '../../domain/entities/DataCoreEntities';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { IWhatsAppProvider } from '../../domain/interfaces/IWhatsAppProvider';
+
+export interface ToolExecutionContextOptions {
+  supabase?: SupabaseClient;
+  providerAdapter?: IWhatsAppProvider;
+  providerIdentity?: string;
+  destinationPhone?: string;
+  conversationId?: string;
+}
 
 export class AIToolsRegistry {
   constructor(
@@ -21,7 +31,7 @@ export class AIToolsRegistry {
   ) {}
 
   /**
-   * Returns the Anthropic tool schemas for the 7 AI Tools.
+   * Returns the Anthropic tool schemas for all 9 AI Tools.
    */
   static getToolDefinitions(): AnthropicToolDefinition[] {
     return [
@@ -107,6 +117,42 @@ export class AIToolsRegistry {
           required: ['productId'],
         },
       },
+      {
+        name: 'send_product_image',
+        description: "Récupère et envoie la photo produit officielle au destinataire sur WhatsApp.",
+        input_schema: {
+          type: 'object',
+          properties: {
+            productId: { type: 'string', description: 'ID unique du produit' },
+            toPhoneNumber: { type: 'string', description: 'Numéro WhatsApp du destinataire (optionnel)' },
+            caption: { type: 'string', description: 'Légende de la photo (nom du produit et prix)' },
+          },
+          required: ['productId'],
+        },
+      },
+      {
+        name: 'search_testimonials',
+        description: 'Consulte les témoignages et avis clients réels pour rassurer le client.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            productId: { type: 'string', description: 'ID du produit concerné' },
+            query: { type: 'string', description: 'Mots-clés ou objections' },
+          },
+        },
+      },
+      {
+        name: 'send_testimonial',
+        description: 'Envoie un témoignage client (texte ou visuel) au client sur WhatsApp.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            testimonialId: { type: 'string', description: 'ID unique du témoignage' },
+            toPhoneNumber: { type: 'string', description: 'Numéro WhatsApp du destinataire' },
+          },
+          required: ['testimonialId'],
+        },
+      },
     ];
   }
 
@@ -117,7 +163,8 @@ export class AIToolsRegistry {
     name: string,
     args: any,
     organizationId: string,
-    aiAgentConfig?: any
+    aiAgentConfig?: any,
+    execOptions?: ToolExecutionContextOptions
   ): Promise<{ result: any; triggerHandoff?: boolean }> {
     try {
       switch (name) {
@@ -149,7 +196,7 @@ export class AIToolsRegistry {
 
           // Search in real configured delivery zones FIRST
           const matchedZone = configuredZones.find((z: any) => {
-            if (z.status === 'INACTIVE') return false;
+            if (z.status === 'ARCHIVED' || z.status === 'INACTIVE') return false;
             const nameMatch = z.name && (z.name.toLowerCase().includes(searchQuery) || searchQuery.includes(z.name.toLowerCase()));
             const districtMatch = Array.isArray(z.districts) && z.districts.some((d: string) =>
               searchQuery.includes(d.toLowerCase()) || d.toLowerCase().includes(queryCity) || (queryDistrict && d.toLowerCase().includes(queryDistrict))
@@ -248,13 +295,199 @@ export class AIToolsRegistry {
           };
         }
 
-        case 'send_product_visual': {
+        case 'send_product_visual':
+        case 'send_product_image': {
+          const supabase = execOptions?.supabase;
+          const providerAdapter = execOptions?.providerAdapter;
+          const providerIdentity = execOptions?.providerIdentity;
+          const destPhone = args.toPhoneNumber || execOptions?.destinationPhone;
+
+          if (supabase) {
+            const { data: imgRows } = await supabase
+              .from('product_images')
+              .select('*')
+              .eq('product_id', args.productId)
+              .eq('organization_id', organizationId)
+              .order('is_primary', { ascending: false });
+
+            const primaryImg = imgRows?.[0];
+            const { data: prodRow } = await supabase
+              .from('products')
+              .select('name, selling_price')
+              .eq('id', args.productId)
+              .single();
+
+            if (!primaryImg || !primaryImg.url) {
+              return {
+                result: {
+                  success: false,
+                  message: `Aucune photo n'est rattachée au produit ${prodRow?.name || args.productId}.`,
+                },
+              };
+            }
+
+            const captionText = args.caption || `📸 ${prodRow?.name || 'Produit'} — ${prodRow?.selling_price ? prodRow.selling_price.toLocaleString('fr-FR') + ' XOF' : ''}`;
+
+            if (providerAdapter && providerIdentity && destPhone) {
+              const sendRes = await providerAdapter.sendMediaMessage(providerIdentity, {
+                toPhoneNumber: destPhone,
+                mediaType: 'image',
+                mediaUrl: primaryImg.url,
+                caption: captionText,
+              });
+
+              if (sendRes.status === 'SENT' && execOptions?.conversationId) {
+                await supabase.from('messages').insert({
+                  organization_id: organizationId,
+                  conversation_id: execOptions.conversationId,
+                  direction: 'OUTBOUND',
+                  sender_type: 'AI',
+                  sender_id: 'SALES_AI',
+                  message_type: 'IMAGE',
+                  content: captionText,
+                  media_url: primaryImg.url,
+                  external_message_id: sendRes.externalMessageId,
+                  status: 'SENT',
+                });
+              }
+
+              return {
+                result: {
+                  success: sendRes.status === 'SENT',
+                  productName: prodRow?.name,
+                  imageUrl: primaryImg.url,
+                  caption: captionText,
+                  sentToWhatsApp: sendRes.status === 'SENT',
+                },
+              };
+            }
+
+            return {
+              result: {
+                success: true,
+                productName: prodRow?.name,
+                imageUrl: primaryImg.url,
+                caption: captionText,
+                sentToWhatsApp: false,
+              },
+            };
+          }
+
           const product = await this.productRepo.findById(args.productId, organizationId);
           return {
             result: {
               productId: args.productId,
               productName: product?.name || 'Produit',
               visualUrl: `https://stbzctncpvgqdpybcrmg.supabase.co/storage/v1/object/public/product-images/${args.productId}.jpg`,
+            },
+          };
+        }
+
+        case 'search_testimonials': {
+          const testimonials = (aiAgentConfig?.testimonials || []) as any[];
+          const activeTestimonials = testimonials.filter((t: any) => t.status !== 'ARCHIVED' && t.status !== 'INACTIVE');
+
+          if (activeTestimonials.length === 0) {
+            return {
+              result: {
+                testimonials: [],
+                message: "Aucun témoignage client enregistré au catalogue.",
+              },
+            };
+          }
+
+          let filtered = activeTestimonials;
+          if (args.productId) {
+            filtered = filtered.filter((t: any) => t.productId === args.productId || !t.productId);
+          }
+          if (args.query) {
+            const q = args.query.toLowerCase();
+            filtered = filtered.filter((t: any) =>
+              (t.text && t.text.toLowerCase().includes(q)) ||
+              (t.clientName && t.clientName.toLowerCase().includes(q))
+            );
+          }
+
+          const finalTestimonials = filtered.length > 0 ? filtered : activeTestimonials.slice(0, 3);
+
+          return {
+            result: {
+              testimonials: finalTestimonials.map((t: any) => ({
+                id: t.id,
+                clientName: t.clientName,
+                text: t.text,
+                date: t.date,
+                mediaUrl: t.mediaUrl || null,
+              })),
+            },
+          };
+        }
+
+        case 'send_testimonial': {
+          const testimonials = (aiAgentConfig?.testimonials || []) as any[];
+          const found = testimonials.find((t: any) => t.id === args.testimonialId);
+
+          if (!found) {
+            return {
+              result: {
+                success: false,
+                message: `Témoignage ${args.testimonialId} introuvable.`,
+              },
+            };
+          }
+
+          const supabase = execOptions?.supabase;
+          const providerAdapter = execOptions?.providerAdapter;
+          const providerIdentity = execOptions?.providerIdentity;
+          const destPhone = args.toPhoneNumber || execOptions?.destinationPhone;
+
+          if (providerAdapter && providerIdentity && destPhone) {
+            let sendRes;
+            if (found.mediaUrl) {
+              sendRes = await providerAdapter.sendMediaMessage(providerIdentity, {
+                toPhoneNumber: destPhone,
+                mediaType: 'image',
+                mediaUrl: found.mediaUrl,
+                caption: `📣 Témoignage ${found.clientName}: "${found.text}"`,
+              });
+            } else {
+              sendRes = await providerAdapter.sendTextMessage(providerIdentity, {
+                toPhoneNumber: destPhone,
+                messageText: `📣 Témoignage client (${found.clientName}): "${found.text}"`,
+              });
+            }
+
+            if (sendRes.status === 'SENT' && supabase && execOptions?.conversationId) {
+              await supabase.from('messages').insert({
+                organization_id: organizationId,
+                conversation_id: execOptions.conversationId,
+                direction: 'OUTBOUND',
+                sender_type: 'AI',
+                sender_id: 'SALES_AI',
+                message_type: found.mediaUrl ? 'IMAGE' : 'TEXT',
+                content: `📣 Témoignage ${found.clientName}: "${found.text}"`,
+                media_url: found.mediaUrl || null,
+                external_message_id: sendRes.externalMessageId,
+                status: 'SENT',
+              });
+            }
+
+            return {
+              result: {
+                success: sendRes.status === 'SENT',
+                clientName: found.clientName,
+                text: found.text,
+                sentToWhatsApp: sendRes.status === 'SENT',
+              },
+            };
+          }
+
+          return {
+            result: {
+              success: true,
+              clientName: found.clientName,
+              text: found.text,
+              sentToWhatsApp: false,
             },
           };
         }

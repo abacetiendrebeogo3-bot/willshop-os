@@ -26,8 +26,9 @@ import {
   Upload,
   Star,
   Trash2,
+  Archive,
   Image as ImageIcon,
-  FileImage
+  FileImage,
 } from "lucide-react";
 
 interface LocalCreateImage {
@@ -69,6 +70,8 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState("");
+  const [editImages, setEditImages] = useState<any[]>([]);
+  const [isUploadingEditImage, setIsUploadingEditImage] = useState(false);
 
   const [editForm, setEditForm] = useState({
     name: "",
@@ -80,6 +83,12 @@ export default function ProductsPage() {
     minimumStock: "",
     status: "ACTIVE",
   });
+
+  // Delete & Archive Safeguard Modal State
+  const [deleteModalProduct, setDeleteModalProduct] = useState<any | null>(null);
+  const [deleteCheckOrdersCount, setDeleteCheckOrdersCount] = useState<number | null>(null);
+  const [isCheckingDelete, setIsCheckingDelete] = useState<boolean>(false);
+  const [isSubmittingDelete, setIsSubmittingDelete] = useState<boolean>(false);
 
   // Adjust Stock Modal State
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
@@ -337,8 +346,97 @@ export default function ProductsPage() {
       minimumStock: String(p.minimum_stock || 5),
       status: p.status || "ACTIVE",
     });
+    setEditImages(p.product_images || []);
     setEditError("");
     setIsEditModalOpen(true);
+  };
+
+  // Handle Edit Product Images
+  const handleAddEditImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !editingProduct || !orgId) return;
+    const file = e.target.files[0];
+    setIsUploadingEditImage(true);
+
+    try {
+      const supabase = createClient();
+      const ext = file.name.split(".").pop() || "jpg";
+      const cleanFileName = `img_${Date.now()}_${Math.random().toString(36).substring(2, 6)}.${ext}`;
+      const storagePath = `${orgId}/${editingProduct.id}/${cleanFileName}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from("product-images")
+        .upload(storagePath, file, {
+          contentType: file.type,
+          upsert: true,
+        });
+
+      if (uploadErr) throw uploadErr;
+
+      const { data: urlData } = supabase.storage
+        .from("product-images")
+        .getPublicUrl(storagePath);
+
+      const isFirstImg = editImages.length === 0;
+
+      const { data: newImg, error: dbErr } = await supabase
+        .from("product_images")
+        .insert({
+          organization_id: orgId,
+          product_id: editingProduct.id,
+          storage_path: storagePath,
+          url: urlData.publicUrl,
+          is_primary: isFirstImg,
+          sort_order: editImages.length,
+        })
+        .select()
+        .single();
+
+      if (dbErr) throw dbErr;
+
+      setEditImages((prev) => [...prev, newImg]);
+    } catch (err: any) {
+      setEditError(`Erreur d'upload : ${err.message}`);
+    } finally {
+      setIsUploadingEditImage(false);
+    }
+  };
+
+  const handleSetPrimaryEditImage = async (imageId: string) => {
+    if (!editingProduct || !orgId) return;
+    try {
+      const supabase = createClient();
+      await supabase
+        .from("product_images")
+        .update({ is_primary: false })
+        .eq("product_id", editingProduct.id)
+        .eq("organization_id", orgId);
+
+      await supabase
+        .from("product_images")
+        .update({ is_primary: true })
+        .eq("id", imageId)
+        .eq("organization_id", orgId);
+
+      setEditImages((prev) =>
+        prev.map((i) => ({ ...i, is_primary: i.id === imageId }))
+      );
+    } catch (err) {
+      console.error("Erreur image principale:", err);
+    }
+  };
+
+  const handleDeleteEditImage = async (img: any) => {
+    if (!confirm("Voulez-vous vraiment supprimer cette image ?")) return;
+    try {
+      const supabase = createClient();
+      await supabase.from("product_images").delete().eq("id", img.id);
+      if (img.storage_path) {
+        await supabase.storage.from("product-images").remove([img.storage_path]);
+      }
+      setEditImages((prev) => prev.filter((i) => i.id !== img.id));
+    } catch (err) {
+      console.error("Erreur suppression image:", err);
+    }
   };
 
   // Handle Update Product
@@ -367,6 +465,7 @@ export default function ProductsPage() {
           selling_price: Number(editForm.sellingPrice) || 0,
           minimum_stock: Number(editForm.minimumStock) || 5,
           status: editForm.status,
+          updated_at: new Date().toISOString(),
         })
         .eq("id", editingProduct.id)
         .eq("organization_id", orgId);
@@ -380,6 +479,71 @@ export default function ProductsPage() {
       setEditError(err.message || "Erreur lors de la modification");
     } finally {
       setIsSubmittingEdit(false);
+    }
+  };
+
+  // Handle Toggle Active/Archived Status
+  const handleToggleProductStatus = async (p: any) => {
+    if (!orgId) return;
+    const newStatus = p.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    try {
+      const supabase = createClient();
+      await supabase
+        .from("products")
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq("id", p.id)
+        .eq("organization_id", orgId);
+
+      await loadProducts();
+    } catch (err) {
+      console.error("Erreur changement statut:", err);
+    }
+  };
+
+  // Handle Open Delete Confirmation Modal with Order Safeguard Check
+  const handleOpenDeleteConfirm = async (p: any) => {
+    setDeleteModalProduct(p);
+    setIsCheckingDelete(true);
+    setDeleteCheckOrdersCount(null);
+    try {
+      const supabase = createClient();
+      const { count } = await supabase
+        .from("order_items")
+        .select("*", { count: "exact", head: true })
+        .eq("product_id", p.id);
+
+      setDeleteCheckOrdersCount(count || 0);
+    } catch (err) {
+      setDeleteCheckOrdersCount(0);
+    } finally {
+      setIsCheckingDelete(false);
+    }
+  };
+
+  const handleConfirmDeleteOrArchive = async (action: "DELETE" | "ARCHIVE") => {
+    if (!deleteModalProduct || !orgId) return;
+    setIsSubmittingDelete(true);
+    try {
+      const supabase = createClient();
+      if (action === "ARCHIVE") {
+        await supabase
+          .from("products")
+          .update({ status: "INACTIVE", updated_at: new Date().toISOString() })
+          .eq("id", deleteModalProduct.id)
+          .eq("organization_id", orgId);
+      } else {
+        await supabase
+          .from("products")
+          .update({ deleted_at: new Date().toISOString(), status: "INACTIVE" })
+          .eq("id", deleteModalProduct.id)
+          .eq("organization_id", orgId);
+      }
+      setDeleteModalProduct(null);
+      await loadProducts();
+    } catch (err) {
+      console.error("Erreur suppression/archivage:", err);
+    } finally {
+      setIsSubmittingDelete(false);
     }
   };
 
@@ -626,23 +790,23 @@ export default function ProductsPage() {
                       <td className="p-3 text-center text-amber-400">{res}</td>
                       <td className="p-3 text-center font-bold text-emerald-400">{avail}</td>
                       <td className="p-3">
-                        <Badge variant={p.status === "ACTIVE" ? "success" : "outline"}>
-                          {p.status === "ACTIVE" ? "Actif" : "Inactif"}
-                        </Badge>
-                      </td>
-                      <td className="p-3 text-right space-x-1.5">
-                        <Link
-                          href={`/operations/products/${p.id}`}
-                          className="inline-flex items-center px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px]"
-                          title="Détail & Historique"
+                        <button
+                          onClick={() => handleToggleProductStatus(p)}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all ${
+                            p.status === "ACTIVE"
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                              : "bg-gray-500/10 text-gray-400 border-gray-500/30 hover:bg-gray-500/20"
+                          }`}
+                          title="Cliquer pour changer le statut"
                         >
-                          <Eye className="w-3.5 h-3.5" />
-                        </Link>
-
+                          {p.status === "ACTIVE" ? "🟢 Actif" : "⚪ Inactif"}
+                        </button>
+                      </td>
+                      <td className="p-3 text-right space-x-1.5 whitespace-nowrap">
                         <button
                           onClick={() => handleOpenEdit(p)}
                           className="inline-flex items-center px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-400 text-[11px]"
-                          title="Modifier le produit"
+                          title="Modifier le produit & images"
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
@@ -656,6 +820,14 @@ export default function ProductsPage() {
                           title="Ré-ajuster stock"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          onClick={() => handleOpenDeleteConfirm(p)}
+                          className="inline-flex items-center px-2 py-1 rounded bg-slate-800 hover:bg-rose-500/20 text-rose-400 text-[11px]"
+                          title="Supprimer / Archiver"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </td>
                     </tr>
@@ -815,9 +987,6 @@ export default function ProductsPage() {
                     <span className="text-xs font-semibold text-slate-300">
                       + Ajouter des images
                     </span>
-                    <span className="text-[11px] text-slate-500">
-                      Glissez-déposez vos images ici ou cliquez pour sélectionner
-                    </span>
                   </label>
                 </div>
 
@@ -888,13 +1057,13 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Modal 2: Modifier Produit */}
+      {/* Modal 2: Modifier Produit & Images */}
       {isEditModalOpen && editingProduct && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-lg space-y-4 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
-                <Edit className="w-5 h-5 text-blue-400" /> Modifier le Produit
+                <Edit className="w-5 h-5 text-blue-400" /> Modifier le Produit & Images
               </h3>
               <button
                 onClick={() => setIsEditModalOpen(false)}
@@ -942,7 +1111,7 @@ export default function ProductsPage() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-slate-200 focus:outline-none focus:border-primary"
                   >
                     <option value="ACTIVE">Actif</option>
-                    <option value="INACTIVE">Inactif</option>
+                    <option value="INACTIVE">Inactif (Archivé)</option>
                   </select>
                 </div>
               </div>
@@ -969,6 +1138,78 @@ export default function ProductsPage() {
                 </div>
               </div>
 
+              {/* 📸 Gestion des Images du Produit */}
+              <div className="space-y-2 border-t border-slate-800 pt-3">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Camera className="w-4 h-4 text-[#7B61FF]" /> Images du Produit ({editImages.length})
+                  </label>
+                  <label
+                    htmlFor="edit-image-upload"
+                    className="cursor-pointer text-[11px] text-primary hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    {isUploadingEditImage ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <>
+                        <Upload className="w-3 h-3" /> + Ajouter une image
+                      </>
+                    )}
+                  </label>
+                  <input
+                    type="file"
+                    id="edit-image-upload"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={handleAddEditImage}
+                    className="hidden"
+                  />
+                </div>
+
+                {editImages.length === 0 ? (
+                  <p className="text-[11px] text-slate-500 italic">Aucune image rattachée à ce produit.</p>
+                ) : (
+                  <div className="grid grid-cols-4 gap-2 pt-1">
+                    {editImages.map((img) => (
+                      <div
+                        key={img.id}
+                        className={`relative group rounded-xl overflow-hidden border aspect-square ${
+                          img.is_primary
+                            ? "border-amber-400 ring-2 ring-amber-400/30"
+                            : "border-slate-800"
+                        }`}
+                      >
+                        <img src={img.url} alt="Produit" className="w-full h-full object-cover" />
+                        {img.is_primary && (
+                          <span className="absolute top-1 left-1 bg-amber-500 text-black text-[8px] font-bold px-1 rounded flex items-center gap-0.5">
+                            <Star className="w-2.5 h-2.5 fill-black" /> Principale
+                          </span>
+                        )}
+                        <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5">
+                          {!img.is_primary && (
+                            <button
+                              type="button"
+                              onClick={() => handleSetPrimaryEditImage(img.id)}
+                              className="p-1.5 rounded bg-amber-500 text-black hover:bg-amber-400"
+                              title="Définir comme principale"
+                            >
+                              <Star className="w-3 h-3" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEditImage(img)}
+                            className="p-1.5 rounded bg-rose-500 text-white hover:bg-rose-600"
+                            title="Supprimer l'image"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={isSubmittingEdit}
@@ -981,7 +1222,87 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Modal 3: Ré-ajuster Stock */}
+      {/* Modal 3: Confirmation de Suppression / Archivage Sécurisé */}
+      {deleteModalProduct && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-rose-400" /> Confirmation Produit — {deleteModalProduct.name}
+              </h3>
+              <button
+                onClick={() => setDeleteModalProduct(null)}
+                className="text-slate-400 hover:text-slate-100 p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {isCheckingDelete ? (
+              <div className="py-6 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin text-primary" /> Vérification de l'historique des commandes...
+              </div>
+            ) : deleteCheckOrdersCount && deleteCheckOrdersCount > 0 ? (
+              <div className="space-y-3 text-xs">
+                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-amber-400">
+                    <AlertTriangle className="w-4 h-4" /> Produit déjà utilisé dans des commandes ({deleteCheckOrdersCount})
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Ce produit est référencé dans <strong>{deleteCheckOrdersCount} commande(s)</strong> de votre historique commercial. Pour préserver l'intégrité de vos rapports de vente, nous vous recommandons fortement de l'<strong>ARCHIVER</strong> (rendre inactif) plutôt que de le supprimer.
+                  </p>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-2">
+                  <button
+                    onClick={() => handleConfirmDeleteOrArchive("ARCHIVE")}
+                    disabled={isSubmittingDelete}
+                    className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold transition-all flex items-center justify-center gap-2"
+                  >
+                    <Archive className="w-4 h-4" /> Archiver le Produit (Recommandé)
+                  </button>
+                  <button
+                    onClick={() => setDeleteModalProduct(null)}
+                    className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 text-xs">
+                <p className="text-slate-300">
+                  Ce produit n'a aucune commande associée. Voulez-vous le supprimer définitivement ou simplement l'archiver ?
+                </p>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    onClick={() => setDeleteModalProduct(null)}
+                    className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold hover:bg-slate-700"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={() => handleConfirmDeleteOrArchive("ARCHIVE")}
+                    disabled={isSubmittingDelete}
+                    className="px-4 py-2 rounded-xl bg-amber-600 text-white font-semibold hover:bg-amber-500"
+                  >
+                    Archiver
+                  </button>
+                  <button
+                    onClick={() => handleConfirmDeleteOrArchive("DELETE")}
+                    disabled={isSubmittingDelete}
+                    className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-500"
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Ré-ajuster Stock */}
       {isAdjustModalOpen && adjustProduct && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl animate-fade-in">

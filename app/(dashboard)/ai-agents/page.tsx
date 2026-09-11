@@ -46,6 +46,9 @@ import {
   Building2,
   Truck,
   FileCode,
+  MessageCircle,
+  Star,
+  Camera,
 } from "lucide-react";
 
 export interface CompanyInfo {
@@ -96,6 +99,18 @@ export interface PolicyEntry {
   updatedAt: string;
 }
 
+export interface TestimonialEntry {
+  id: string;
+  clientName: string;
+  text: string;
+  productId?: string;
+  date: string;
+  source: string;
+  status: "ACTIVE" | "ARCHIVED";
+  mediaUrl?: string;
+  notes?: string;
+}
+
 export interface KnowledgeEntry {
   id: string;
   title: string;
@@ -134,7 +149,7 @@ export default function AIAgentsConfigPage() {
 
   // Section 2: Structured Knowledge Base States
   const [activeKnowledgeTab, setActiveKnowledgeTab] = useState<
-    "ENTREPRISE" | "LIVRAISON" | "PAIEMENT" | "FAQ" | "POLITIQUES"
+    "ENTREPRISE" | "LIVRAISON" | "PAIEMENT" | "FAQ" | "POLITIQUES" | "TÉMOIGNAGES"
   >("ENTREPRISE");
 
   // 1. Company Info State
@@ -219,6 +234,33 @@ export default function AIAgentsConfigPage() {
     status: "ACTIVE",
   });
 
+  // 6. Testimonials State
+  const [testimonials, setTestimonials] = useState<TestimonialEntry[]>([]);
+  const [showTestimonialModal, setShowTestimonialModal] = useState<boolean>(false);
+  const [editingTestimonial, setEditingTestimonial] = useState<TestimonialEntry | null>(null);
+  const [testimonialForm, setTestimonialForm] = useState<{
+    clientName: string;
+    text: string;
+    productId: string;
+    date: string;
+    source: string;
+    status: "ACTIVE" | "ARCHIVED";
+    mediaUrl: string;
+    notes: string;
+  }>({
+    clientName: "",
+    text: "",
+    productId: "",
+    date: new Date().toISOString().split("T")[0],
+    source: "WhatsApp",
+    status: "ACTIVE",
+    mediaUrl: "",
+    notes: "",
+  });
+
+  // Real Products List for Selection
+  const [catalogProducts, setCatalogProducts] = useState<any[]>([]);
+
   // Knowledge Base Articles
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeEntry[]>([]);
 
@@ -232,6 +274,9 @@ export default function AIAgentsConfigPage() {
     lookup_orders: true,
     lookup_delivery: true,
     send_product_card: true,
+    send_product_image: true,
+    search_testimonials: true,
+    send_testimonial: true,
     create_order: true,
     update_crm: true,
     escalate_human: true,
@@ -367,6 +412,11 @@ export default function AIAgentsConfigPage() {
           setPolicies(aiConfig.policies);
         }
 
+        // 6. Testimonials
+        if (aiConfig.testimonials && Array.isArray(aiConfig.testimonials)) {
+          setTestimonials(aiConfig.testimonials);
+        }
+
         if (aiConfig.knowledge_base && Array.isArray(aiConfig.knowledge_base)) {
           setKnowledgeBase(aiConfig.knowledge_base);
         }
@@ -380,8 +430,8 @@ export default function AIAgentsConfigPage() {
         }
       }
 
-      // Fetch Real Metrics from Database
-      const [{ count: convCount }, { count: custCount }, { count: handoffCount }, { count: prodCount }] =
+      // Fetch Real Catalog Products & Metrics
+      const [{ count: convCount }, { count: custCount }, { count: handoffCount }, { data: prodsList, count: prodCount }] =
         await Promise.all([
           supabase
             .from("conversations")
@@ -399,10 +449,14 @@ export default function AIAgentsConfigPage() {
             .eq("status", "PENDING"),
           supabase
             .from("products")
-            .select("*", { count: "exact", head: true })
+            .select("id, name, sku, selling_price")
             .eq("organization_id", targetOrgId)
             .eq("status", "ACTIVE"),
         ]);
+
+      if (prodsList) {
+        setCatalogProducts(prodsList);
+      }
 
       setMetrics({
         activeConversations: convCount || 0,
@@ -453,6 +507,7 @@ export default function AIAgentsConfigPage() {
           payment_methods: paymentMethods,
           faqs: faqs,
           policies: policies,
+          testimonials: testimonials,
           knowledge_base: knowledgeBase,
           tools: toolsConfig,
           schedule: scheduleConfig,
@@ -668,6 +723,66 @@ export default function AIAgentsConfigPage() {
     if (!confirm("Voulez-vous vraiment supprimer cette politique ?")) return;
     setPolicies((prev) => prev.filter((p) => p.id !== id));
     showToast("🗑️ Politique supprimée");
+  };
+
+  // --- TESTIMONIAL CRUD HANDLERS ---
+  const handleSaveTestimonial = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testimonialForm.clientName.trim() || !testimonialForm.text.trim()) return;
+
+    if (editingTestimonial) {
+      setTestimonials((prev) =>
+        prev.map((t) =>
+          t.id === editingTestimonial.id
+            ? {
+                ...t,
+                clientName: testimonialForm.clientName.trim(),
+                text: testimonialForm.text.trim(),
+                productId: testimonialForm.productId || undefined,
+                date: testimonialForm.date,
+                source: testimonialForm.source,
+                status: testimonialForm.status,
+                mediaUrl: testimonialForm.mediaUrl.trim() || undefined,
+                notes: testimonialForm.notes.trim() || undefined,
+              }
+            : t
+        )
+      );
+      showToast("✓ Témoignage modifié");
+    } else {
+      const newTestimonial: TestimonialEntry = {
+        id: `testim-${Date.now()}`,
+        clientName: testimonialForm.clientName.trim(),
+        text: testimonialForm.text.trim(),
+        productId: testimonialForm.productId || undefined,
+        date: testimonialForm.date,
+        source: testimonialForm.source,
+        status: testimonialForm.status,
+        mediaUrl: testimonialForm.mediaUrl.trim() || undefined,
+        notes: testimonialForm.notes.trim() || undefined,
+      };
+      setTestimonials((prev) => [newTestimonial, ...prev]);
+      showToast("✓ Nouveau témoignage ajouté");
+    }
+
+    setShowTestimonialModal(false);
+    setEditingTestimonial(null);
+    setTestimonialForm({
+      clientName: "",
+      text: "",
+      productId: "",
+      date: new Date().toISOString().split("T")[0],
+      source: "WhatsApp",
+      status: "ACTIVE",
+      mediaUrl: "",
+      notes: "",
+    });
+  };
+
+  const handleDeleteTestimonial = (id: string) => {
+    if (!confirm("Voulez-vous vraiment supprimer ce témoignage ?")) return;
+    setTestimonials((prev) => prev.filter((t) => t.id !== id));
+    showToast("🗑️ Témoignage supprimé");
   };
 
   // Run Real Anthropic Agent Test
@@ -902,7 +1017,7 @@ export default function AIAgentsConfigPage() {
                   rows={3}
                   value={identityConfig.customInstructions}
                   onChange={(e) => setIdentityConfig({ ...identityConfig, customInstructions: e.target.value })}
-                  placeholder="Ex: Toujours demander le quartier exact de livraison avant de valider le tarif..."
+                  placeholder="Ex: Toujours envoyer la photo du produit immédiatement après présentation..."
                   className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-sans"
                 />
               </div>
@@ -910,7 +1025,7 @@ export default function AIAgentsConfigPage() {
           )}
         </div>
 
-        {/* SECTION 2: BASE DE CONNAISSANCES MÉTIER (5 CATÉGORIES INTERACTIVES & STRUCTURÉES) */}
+        {/* SECTION 2: BASE DE CONNAISSANCES MÉTIER (6 CATÉGORIES INTERACTIVES & STRUCTURÉES) */}
         <div className="bg-[#12121A] border border-[#181824] rounded-2xl overflow-hidden">
           <button
             onClick={() => toggleSection("knowledge")}
@@ -921,7 +1036,7 @@ export default function AIAgentsConfigPage() {
               <div>
                 <h3 className="font-bold text-white text-base">2. Base de Connaissances Métier (CRUD)</h3>
                 <p className="text-xs text-gray-400">
-                  Configuration de l'Entreprise, Zones de livraison, Moyens de paiement, FAQ et Politiques
+                  Entreprise, Zones de livraison, Moyens de paiement, FAQ, Politiques et Témoignages clients
                 </p>
               </div>
             </div>
@@ -938,6 +1053,7 @@ export default function AIAgentsConfigPage() {
                   { id: "PAIEMENT", label: "PAIEMENT", icon: CreditCard },
                   { id: "FAQ", label: "FAQ", icon: HelpCircle },
                   { id: "POLITIQUES", label: "POLITIQUES", icon: FileCheck },
+                  { id: "TÉMOIGNAGES", label: "TÉMOIGNAGES", icon: Star },
                 ].map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeKnowledgeTab === tab.id;
@@ -1070,21 +1186,10 @@ export default function AIAgentsConfigPage() {
                       className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
                     />
                   </div>
-
-                  <div>
-                    <label className="text-xs font-semibold text-gray-300 block mb-1">Informations complémentaires</label>
-                    <textarea
-                      rows={2}
-                      value={companyInfo.additionalInfo}
-                      onChange={(e) => setCompanyInfo({ ...companyInfo, additionalInfo: e.target.value })}
-                      placeholder="Toute consigne ou note sur l'entreprise destinée à l'Agent IA..."
-                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                    />
-                  </div>
                 </div>
               )}
 
-              {/* TAB 2: LIVRAISON (ZONES DE LIVRAISON STRUCTURÉES) */}
+              {/* TAB 2: LIVRAISON */}
               {activeKnowledgeTab === "LIVRAISON" && (
                 <div className="space-y-4 animate-fade-in">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
@@ -1114,12 +1219,7 @@ export default function AIAgentsConfigPage() {
                   {deliveryZones.length === 0 ? (
                     <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
                       <Truck className="w-10 h-10 text-gray-500 mx-auto" />
-                      <div className="space-y-1">
-                        <h5 className="text-white font-bold text-sm">Aucune zone de livraison configurée</h5>
-                        <p className="text-xs text-gray-400 max-w-md mx-auto">
-                          Définissez vos zones réelles (ex: Ouaga Centre, Kossodo, Bobo) avec les quartiers rattachés, le tarif exact en XOF et le délai.
-                        </p>
-                      </div>
+                      <h5 className="text-white font-bold text-sm">Aucune zone de livraison configurée</h5>
                       <button
                         onClick={() => {
                           setEditingZone(null);
@@ -1148,16 +1248,11 @@ export default function AIAgentsConfigPage() {
                         <tbody className="divide-y divide-[#282838] bg-[#181824]">
                           {deliveryZones.map((zone) => (
                             <tr key={zone.id} className="hover:bg-[#202030] transition-all">
-                              <td className="p-3.5 font-bold text-white whitespace-nowrap">
-                                {zone.name}
-                                {zone.notes && (
-                                  <span className="block text-[10px] text-gray-400 font-normal">{zone.notes}</span>
-                                )}
-                              </td>
+                              <td className="p-3.5 font-bold text-white whitespace-nowrap">{zone.name}</td>
                               <td className="p-3.5 max-w-xs">
                                 <div className="flex flex-wrap gap-1">
                                   {zone.districts.map((d, i) => (
-                                    <span key={i} className="px-2 py-0.5 bg-[#252535] text-gray-300 rounded-md font-mono text-[11px] border border-white/5">
+                                    <span key={i} className="px-2 py-0.5 bg-[#252535] text-gray-300 rounded-md font-mono text-[11px]">
                                       {d}
                                     </span>
                                   ))}
@@ -1215,7 +1310,7 @@ export default function AIAgentsConfigPage() {
                 </div>
               )}
 
-              {/* TAB 3: PAIEMENT (MOYENS DE PAIEMENT STRUCTURÉS) */}
+              {/* TAB 3: PAIEMENT */}
               {activeKnowledgeTab === "PAIEMENT" && (
                 <div className="space-y-4 animate-fade-in">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
@@ -1225,7 +1320,7 @@ export default function AIAgentsConfigPage() {
                         Moyens de Paiement Acceptés
                       </h4>
                       <p className="text-xs text-gray-400">
-                        Informations transmises au client par l'Agent IA lorsqu'il demande comment régler
+                        Transmis au client par l'Agent IA lorsqu'il demande comment régler
                       </p>
                     </div>
 
@@ -1242,95 +1337,58 @@ export default function AIAgentsConfigPage() {
                     </button>
                   </div>
 
-                  {paymentMethods.length === 0 ? (
-                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
-                      <CreditCard className="w-10 h-10 text-gray-500 mx-auto" />
-                      <div className="space-y-1">
-                        <h5 className="text-white font-bold text-sm">Aucun moyen de paiement configuré</h5>
-                        <p className="text-xs text-gray-400 max-w-md mx-auto">
-                          Ajoutez vos moyens de paiement (Orange Money, Wave, Paiement à la livraison) avec les numéros de dépôt et instructions.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setEditingPayment(null);
-                          setPaymentForm({ name: "", identifier: "", instructions: "", status: "ACTIVE", notes: "" });
-                          setShowPaymentModal(true);
-                        }}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Ajouter
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {paymentMethods.map((pm) => (
-                        <div key={pm.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3 relative">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-sm flex items-center gap-2">
-                              <CreditCard className="w-4 h-4 text-purple-400" />
-                              {pm.name}
-                            </span>
-                            <span
-                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
-                                pm.status === "ACTIVE"
-                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                  : "bg-gray-500/10 text-gray-400 border-gray-500/30"
-                              }`}
-                            >
-                              {pm.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
-                            </span>
-                          </div>
-
-                          <div className="space-y-1 bg-[#12121A] p-3 rounded-xl border border-white/5 text-xs font-mono">
-                            <div className="text-gray-400 text-[11px]">Numéro / Identifiant :</div>
-                            <div className="text-white font-bold text-sm">{pm.identifier}</div>
-                          </div>
-
-                          {pm.instructions && (
-                            <p className="text-xs text-gray-300 bg-[#14141E] p-2.5 rounded-xl border border-white/5">
-                              {pm.instructions}
-                            </p>
-                          )}
-
-                          <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                            <span className="text-[10px] text-gray-500">{pm.notes}</span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingPayment(pm);
-                                  setPaymentForm({
-                                    name: pm.name,
-                                    identifier: pm.identifier,
-                                    instructions: pm.instructions,
-                                    status: pm.status,
-                                    notes: pm.notes || "",
-                                  });
-                                  setShowPaymentModal(true);
-                                }}
-                                className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
-                                title="Modifier"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeletePayment(pm.id)}
-                                className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
-                                title="Supprimer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {paymentMethods.map((pm) => (
+                      <div key={pm.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-white text-sm flex items-center gap-2">
+                            <CreditCard className="w-4 h-4 text-purple-400" />
+                            {pm.name}
+                          </span>
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                            {pm.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <div className="bg-[#12121A] p-3 rounded-xl border border-white/5 font-mono text-xs">
+                          <span className="text-gray-400 text-[11px] block">Identifiant / Dépôt :</span>
+                          <strong className="text-white text-sm">{pm.identifier}</strong>
+                        </div>
+                        {pm.instructions && (
+                          <p className="text-xs text-gray-300 bg-[#14141E] p-2.5 rounded-xl border border-white/5">
+                            {pm.instructions}
+                          </p>
+                        )}
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              setEditingPayment(pm);
+                              setPaymentForm({
+                                name: pm.name,
+                                identifier: pm.identifier,
+                                instructions: pm.instructions,
+                                status: pm.status,
+                                notes: pm.notes || "",
+                              });
+                              setShowPaymentModal(true);
+                            }}
+                            className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePayment(pm.id)}
+                            className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              {/* TAB 4: FAQ (FOIRE AUX QUESTIONS) */}
+              {/* TAB 4: FAQ */}
               {activeKnowledgeTab === "FAQ" && (
                 <div className="space-y-4 animate-fade-in">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
@@ -1339,102 +1397,52 @@ export default function AIAgentsConfigPage() {
                         <HelpCircle className="w-4 h-4 text-cyan-400" />
                         Foire Aux Questions (FAQ)
                       </h4>
-                      <p className="text-xs text-gray-400">
-                        Questions fréquentes et leurs réponses officielles accessibles dans le contexte de l'Agent IA
-                      </p>
                     </div>
-
                     <button
                       onClick={() => {
                         setEditingFaq(null);
                         setFaqForm({ question: "", answer: "", category: "Général", status: "ACTIVE" });
                         setShowFaqModal(true);
                       }}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl transition-all shadow-md"
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl"
                     >
                       <Plus className="w-4 h-4" />
                       Ajouter une FAQ
                     </button>
                   </div>
 
-                  {faqs.length === 0 ? (
-                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
-                      <HelpCircle className="w-10 h-10 text-gray-500 mx-auto" />
-                      <div className="space-y-1">
-                        <h5 className="text-white font-bold text-sm">Aucune FAQ configurée</h5>
-                        <p className="text-xs text-gray-400 max-w-md mx-auto">
-                          Ajoutez les questions les plus fréquemment posées par vos clients pour que l'Agent y réponde parfaitement.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setEditingFaq(null);
-                          setFaqForm({ question: "", answer: "", category: "Général", status: "ACTIVE" });
-                          setShowFaqModal(true);
-                        }}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Ajouter
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {faqs.map((faq) => (
-                        <div key={faq.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-sm flex items-center gap-2">
-                              ❓ {faq.question}
+                  <div className="space-y-3">
+                    {faqs.map((faq) => (
+                      <div key={faq.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-white text-sm">❓ {faq.question}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-[#7B61FF]/20 text-[#7B61FF]">
+                              {faq.category}
                             </span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30">
-                                {faq.category}
-                              </span>
-                              <span
-                                className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold border ${
-                                  faq.status === "ACTIVE"
-                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                    : "bg-gray-500/10 text-gray-400 border-gray-500/30"
-                                }`}
-                              >
-                                {faq.status === "ACTIVE" ? "Actif" : "Archivé"}
-                              </span>
-                            </div>
-                          </div>
-
-                          <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
-                            💬 {faq.answer}
-                          </p>
-
-                          <div className="flex justify-end gap-2 pt-1">
-                            <button
-                              onClick={() => {
-                                setEditingFaq(faq);
-                                setFaqForm({
-                                  question: faq.question,
-                                  answer: faq.answer,
-                                  category: faq.category,
-                                  status: faq.status,
-                                });
-                                setShowFaqModal(true);
-                              }}
-                              className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
-                              title="Modifier"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteFaq(faq.id)}
-                              className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5">
+                          💬 {faq.answer}
+                        </p>
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              setEditingFaq(faq);
+                              setFaqForm({ question: faq.question, answer: faq.answer, category: faq.category, status: faq.status });
+                              setShowFaqModal(true);
+                            }}
+                            className="p-1.5 bg-[#252535] text-gray-300 rounded-lg"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleDeleteFaq(faq.id)} className="p-1.5 bg-[#252535] text-red-400 rounded-lg">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1445,99 +1453,188 @@ export default function AIAgentsConfigPage() {
                     <div>
                       <h4 className="text-sm font-bold text-white flex items-center gap-2">
                         <FileCheck className="w-4 h-4 text-amber-400" />
-                        Politiques & Conditions Métier
+                        Politiques Commerciales & Conditions
                       </h4>
-                      <p className="text-xs text-gray-400">
-                        Politiques de retour, échange, remboursement et conditions d'expédition
-                      </p>
                     </div>
-
                     <button
                       onClick={() => {
                         setEditingPolicy(null);
                         setPolicyForm({ title: "", content: "", status: "ACTIVE" });
                         setShowPolicyModal(true);
                       }}
-                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl transition-all shadow-md"
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl"
                     >
                       <Plus className="w-4 h-4" />
                       Ajouter une politique
                     </button>
                   </div>
 
-                  {policies.length === 0 ? (
-                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
-                      <FileCheck className="w-10 h-10 text-gray-500 mx-auto" />
-                      <div className="space-y-1">
-                        <h5 className="text-white font-bold text-sm">Aucune politique configurée</h5>
-                        <p className="text-xs text-gray-400 max-w-md mx-auto">
-                          Définissez vos règles officielles (Ex: Politique de retour sous 7 jours, Conditions de remboursement).
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {policies.map((pol) => (
+                      <div key={pol.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-white text-sm">📋 {pol.title}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-400">
+                            Actif
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
+                          {pol.content}
                         </p>
+                        <div className="flex justify-end gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              setEditingPolicy(pol);
+                              setPolicyForm({ title: pol.title, content: pol.content, status: pol.status });
+                              setShowPolicyModal(true);
+                            }}
+                            className="p-1.5 bg-[#252535] text-gray-300 rounded-lg"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => handleDeletePolicy(pol.id)} className="p-1.5 bg-[#252535] text-red-400 rounded-lg">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 6: TÉMOIGNAGES CLIENTS RÉELS */}
+              {activeKnowledgeTab === "TÉMOIGNAGES" && (
+                <div className="space-y-4 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#181824] pb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                        📣 Témoignages & Preuves Sociales Réelles
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        Avis clients authentiques transmis aux prospects pour lever les doutes (via <code className="text-amber-400 font-mono">search_testimonials</code> et <code className="text-amber-400 font-mono">send_testimonial</code>)
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setEditingTestimonial(null);
+                        setTestimonialForm({
+                          clientName: "",
+                          text: "",
+                          productId: "",
+                          date: new Date().toISOString().split("T")[0],
+                          source: "WhatsApp",
+                          status: "ACTIVE",
+                          mediaUrl: "",
+                          notes: "",
+                        });
+                        setShowTestimonialModal(true);
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold rounded-xl transition-all shadow-md"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Nouveau Témoignage
+                    </button>
+                  </div>
+
+                  {testimonials.length === 0 ? (
+                    <div className="p-8 text-center bg-[#181824] border border-dashed border-[#282838] rounded-2xl space-y-3">
+                      <Star className="w-10 h-10 text-gray-500 mx-auto" />
+                      <h5 className="text-white font-bold text-sm">Aucun témoignage client enregistré</h5>
+                      <p className="text-xs text-gray-400 max-w-md mx-auto">
+                        Ajoutez des retours réels de vos clientes (WhatsApp, photos de résultats) pour que l'Agent IA puisse rassurer les prospects indécis.
+                      </p>
                       <button
                         onClick={() => {
-                          setEditingPolicy(null);
-                          setPolicyForm({ title: "", content: "", status: "ACTIVE" });
-                          setShowPolicyModal(true);
+                          setEditingTestimonial(null);
+                          setTestimonialForm({
+                            clientName: "",
+                            text: "",
+                            productId: "",
+                            date: new Date().toISOString().split("T")[0],
+                            source: "WhatsApp",
+                            status: "ACTIVE",
+                            mediaUrl: "",
+                            notes: "",
+                          });
+                          setShowTestimonialModal(true);
                         }}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold rounded-xl transition-all"
                       >
                         <Plus className="w-4 h-4" />
-                        Ajouter
+                        Ajouter un témoignage
                       </button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {policies.map((pol) => (
-                        <div key={pol.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-white text-sm flex items-center gap-2">
-                              📋 {pol.title}
-                            </span>
-                            <span
-                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
-                                pol.status === "ACTIVE"
-                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                  : "bg-gray-500/10 text-gray-400 border-gray-500/30"
-                              }`}
-                            >
-                              {pol.status === "ACTIVE" ? "Actif" : "Archivé"}
-                            </span>
-                          </div>
-
-                          <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
-                            {pol.content}
-                          </p>
-
-                          <div className="flex items-center justify-between pt-2 border-t border-white/5 font-mono text-[10px] text-gray-500">
-                            <span>Modifié le {new Date(pol.updatedAt).toLocaleDateString("fr-FR")}</span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  setEditingPolicy(pol);
-                                  setPolicyForm({
-                                    title: pol.title,
-                                    content: pol.content,
-                                    status: pol.status,
-                                  });
-                                  setShowPolicyModal(true);
-                                }}
-                                className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
-                                title="Modifier"
+                      {testimonials.map((t) => {
+                        const matchedProd = catalogProducts.find((p) => p.id === t.productId);
+                        return (
+                          <div key={t.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                                <span className="font-bold text-white text-sm">{t.clientName}</span>
+                              </div>
+                              <span
+                                className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
+                                  t.status === "ACTIVE"
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                    : "bg-gray-500/10 text-gray-400 border-gray-500/30"
+                                }`}
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeletePolicy(pol.id)}
-                                className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
-                                title="Supprimer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                                {t.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-gray-200 bg-[#12121A] p-3 rounded-xl border border-white/5 italic">
+                              "{t.text}"
+                            </p>
+
+                            {t.mediaUrl && (
+                              <div className="rounded-xl overflow-hidden border border-slate-800 max-h-32">
+                                <img src={t.mediaUrl} alt="Capture témoignage" className="w-full h-32 object-cover" />
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between pt-1 font-mono text-[10px] text-gray-400">
+                              <span>
+                                {matchedProd ? `Produit: ${matchedProd.name}` : "Témoignage Général"} • Source: {t.source}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setEditingTestimonial(t);
+                                    setTestimonialForm({
+                                      clientName: t.clientName,
+                                      text: t.text,
+                                      productId: t.productId || "",
+                                      date: t.date || new Date().toISOString().split("T")[0],
+                                      source: t.source || "WhatsApp",
+                                      status: t.status,
+                                      mediaUrl: t.mediaUrl || "",
+                                      notes: t.notes || "",
+                                    });
+                                    setShowTestimonialModal(true);
+                                  }}
+                                  className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg"
+                                  title="Modifier"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteTestimonial(t.id)}
+                                  className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg"
+                                  title="Supprimer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -1553,9 +1650,9 @@ export default function AIAgentsConfigPage() {
               <Package className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="font-bold text-white text-base">📦 Catalogue Produits (Données Temps Réel)</h3>
+              <h3 className="font-bold text-white text-base">📦 Catalogue Produits & Stock SSOT</h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                <span className="font-bold text-emerald-400">{metrics.productsCount} produits</span> accessibles automatiquement par l'Agent via les outils système.
+                <span className="font-bold text-emerald-400">{metrics.productsCount} produits</span> accessibles automatiquement par l'Agent avec gestion des photos et statut actif/archivé.
               </p>
             </div>
           </div>
@@ -1564,7 +1661,7 @@ export default function AIAgentsConfigPage() {
             href="/operations/products"
             className="px-4 py-2 bg-[#181824] hover:bg-[#222232] text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition-all flex items-center gap-2"
           >
-            Voir les produits dans le Catalogue
+            Gérer le Catalogue Produits
             <ExternalLink className="w-3.5 h-3.5" />
           </Link>
         </div>
@@ -1597,9 +1694,9 @@ export default function AIAgentsConfigPage() {
                     { key: "check_price", label: "Vérifier prix & promotions", desc: "Consultation tarifs" },
                     { key: "check_stock", label: "Vérifier le stock disponible", desc: "Vérification inventaire" },
                     { key: "check_zones", label: "Vérifier zones de livraison", desc: "Frais & zones structurées" },
+                    { key: "search_testimonials", label: "Consulter témoignages réels", desc: "Base d'avis clients" },
                     { key: "lookup_customer", label: "Consulter profil client CRM", desc: "Historique & préférences" },
                     { key: "lookup_orders", label: "Consulter les commandes", desc: "Statut des commandes" },
-                    { key: "lookup_delivery", label: "Consulter statut livraison", desc: "Suivi des livreurs" },
                   ].map((t) => (
                     <label key={t.key} className="bg-[#181824] border border-[#282838] p-3 rounded-xl flex items-start gap-3 cursor-pointer hover:border-[#7B61FF]/40 transition-all">
                       <input
@@ -1619,14 +1716,15 @@ export default function AIAgentsConfigPage() {
 
               <div>
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3 font-mono">
-                  AGIR (Actions & Mises à jour)
+                  AGIR & EXPÉDIER SUR WHATSAPP (Actions Réelles)
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                   {[
-                    { key: "send_product_card", label: "Envoyer fiches produits", desc: "Photos, prix & fiches" },
-                    { key: "create_order", label: "Créer une commande client", desc: "Enregistrement vente" },
+                    { key: "send_product_image", label: "Envoyer photo produit WhatsApp", desc: "Envoi média via Evolution API" },
+                    { key: "send_testimonial", label: "Envoyer témoignage WhatsApp", desc: "Preuve sociale média/texte" },
+                    { key: "create_order", label: "Créer une commande client", desc: "Réservation stock atomique" },
                     { key: "update_crm", label: "Mettre à jour le profil CRM", desc: "Mise à jour coordonnées" },
-                    { key: "escalate_human", label: "Escalader vers un humain", desc: "Transfert conseiller" },
+                    { key: "escalate_human", label: "Escalader vers un humain", desc: "Transfert conseiller commercial" },
                   ].map((t) => (
                     <label key={t.key} className="bg-[#181824] border border-[#282838] p-3 rounded-xl flex items-start gap-3 cursor-pointer hover:border-[#7B61FF]/40 transition-all">
                       <input
@@ -1647,7 +1745,7 @@ export default function AIAgentsConfigPage() {
           )}
         </div>
 
-        {/* SECTION 5: GARDE-FOUS & SÉCURITÉ (🔒 TOUJOURS ACTIF) */}
+        {/* SECTION 5: GARDE-FOUS & SÉCURITÉ */}
         <div className="bg-[#12121A] border border-[#181824] rounded-2xl overflow-hidden">
           <button
             onClick={() => toggleSection("guardrails")}
@@ -1667,13 +1765,13 @@ export default function AIAgentsConfigPage() {
             <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               {[
                 "Ne jamais inventer de tarif de livraison (utiliser strictement les zones configurées)",
+                "Ne jamais inventer de témoignage ni de résultat client fictif",
+                "Ne jamais envoyer d'image produit ou témoignage non présent en base",
+                "Escalader immédiatement vers un humain si l'audio vocal est inaudible",
                 "Ne jamais inventer de prix non présent dans le catalogue SSOT",
                 "Ne jamais inventer de stock disponible",
                 "Ne jamais inventer de mode de paiement non configuré",
-                "Ne jamais inventer de commande fictive",
-                "Ne jamais inventer de délais de livraison irréalistes",
-                "Respecter les demandes de désinscription des clients",
-                "Respecter les limites strictes de l'organisation",
+                "Respecter les limites strictes de l'organisation multi-tenant",
               ].map((rule, idx) => (
                 <div key={idx} className="bg-[#181824] border border-emerald-500/20 p-3.5 rounded-xl flex items-center gap-3">
                   <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -1714,75 +1812,6 @@ export default function AIAgentsConfigPage() {
                   🟢 ACTIVÉE
                 </span>
               </div>
-              <p className="text-gray-400">
-                Dès qu'un vendeur répond directement depuis l'application WhatsApp de son téléphone, le système détecte l'événement et coupe automatiquement l'Agent IA pour laisser la main au commercial.
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* SECTION 7: DISPONIBILITÉ & HORAIRES */}
-        <div className="bg-[#12121A] border border-[#181824] rounded-2xl overflow-hidden">
-          <button
-            onClick={() => toggleSection("schedule")}
-            className="w-full p-5 flex items-center justify-between bg-[#14141E] border-b border-[#181824] hover:bg-[#181828] transition-all text-left"
-          >
-            <div className="flex items-center gap-3">
-              <Clock className="w-5 h-5 text-cyan-400" />
-              <div>
-                <h3 className="font-bold text-white text-base">6. Disponibilité & Horaires de Travail</h3>
-                <p className="text-xs text-gray-400">Définissez les heures d'activité automatique de votre Agent IA</p>
-              </div>
-            </div>
-            {openSections.schedule ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-          </button>
-
-          {openSections.schedule && (
-            <div className="p-6 space-y-4">
-              <label className="flex items-center gap-3 bg-[#181824] p-4 rounded-xl cursor-pointer border border-[#282838]">
-                <input
-                  type="checkbox"
-                  checked={scheduleConfig.active}
-                  onChange={(e) => setScheduleConfig({ ...scheduleConfig, active: e.target.checked })}
-                  className="accent-[#7B61FF]"
-                />
-                <div>
-                  <span className="font-bold text-white text-sm block">Restreindre l'Agent IA à des horaires spécifiques</span>
-                  <span className="text-xs text-gray-400">En dehors de ces heures, l'Agent enregistre le message sans répondre</span>
-                </div>
-              </label>
-
-              {scheduleConfig.active && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1 font-semibold">Heure Début</label>
-                    <input
-                      type="time"
-                      value={scheduleConfig.startTime}
-                      onChange={(e) => setScheduleConfig({ ...scheduleConfig, startTime: e.target.value })}
-                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1 font-semibold">Heure Fin</label>
-                    <input
-                      type="time"
-                      value={scheduleConfig.endTime}
-                      onChange={(e) => setScheduleConfig({ ...scheduleConfig, endTime: e.target.value })}
-                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 block mb-1 font-semibold">Fuseau Horaire</label>
-                    <input
-                      type="text"
-                      value={scheduleConfig.timezone}
-                      onChange={(e) => setScheduleConfig({ ...scheduleConfig, timezone: e.target.value })}
-                      className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
-                    />
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1811,9 +1840,7 @@ export default function AIAgentsConfigPage() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">
-                  Quartiers Inclus (séparés par une virgule)
-                </label>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Quartiers Inclus</label>
                 <textarea
                   rows={3}
                   placeholder="Ex: Koulouba, Paspanga, Gounghin, Zogona..."
@@ -1833,125 +1860,33 @@ export default function AIAgentsConfigPage() {
                     step="100"
                     value={zoneForm.fee}
                     onChange={(e) => setZoneForm({ ...zoneForm, fee: Number(e.target.value) })}
-                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm font-mono"
                     required
                   />
-                  <span className="text-[10px] text-gray-400 mt-1 block">0 = Gratuit, 1000, 1500, 2000, etc.</span>
                 </div>
-
                 <div>
                   <label className="text-xs font-semibold text-gray-300 block mb-1">Délai indicatif</label>
                   <input
                     type="text"
-                    placeholder="Ex: 24h, Même jour, 48h"
                     value={zoneForm.delay}
                     onChange={(e) => setZoneForm({ ...zoneForm, delay: e.target.value })}
-                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm font-mono"
                     required
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Notes / Indications pour l'Agent</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Point de rdv possible si hors zone"
-                  value={zoneForm.notes}
-                  onChange={(e) => setZoneForm({ ...zoneForm, notes: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowZoneModal(false)}
-                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all"
-                >
-                  Enregistrer la zone
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: PAYMENT METHOD ADD / EDIT */}
-      {showPaymentModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-purple-400" />
-              {editingPayment ? "Modifier le Moyen de Paiement" : "Ajouter un Moyen de Paiement"}
-            </h3>
-
-            <form onSubmit={handleSavePayment} className="space-y-4">
-              <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Nom du Moyen de Paiement</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Orange Money, Moov Money, Wave, Espèces"
-                  value={paymentForm.name}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, name: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">
-                  Numéro / Identifiant commercial (Pas de secrets sensibles !)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ex: +226 70 00 00 00 ou À la livraison"
-                  value={paymentForm.identifier}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, identifier: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Instructions pour le Client</label>
-                <textarea
-                  rows={3}
-                  placeholder="Ex: Effectuer le dépôt sur le numéro puis envoyer la capture de confirmation WhatsApp..."
-                  value={paymentForm.instructions}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, instructions: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Notes internes</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Titulaire: SARL WillShop"
-                  value={paymentForm.notes}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowPaymentModal(false)}
-                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold transition-all"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"
                 >
                   Enregistrer
                 </button>
@@ -1961,118 +1896,106 @@ export default function AIAgentsConfigPage() {
         </div>
       )}
 
-      {/* MODAL 3: FAQ ADD / EDIT */}
-      {showFaqModal && (
+      {/* MODAL 2: TESTIMONIAL ADD / EDIT */}
+      {showTestimonialModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <HelpCircle className="w-5 h-5 text-cyan-400" />
-              {editingFaq ? "Modifier la FAQ" : "Ajouter une Question / Réponse"}
+              <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+              {editingTestimonial ? "Modifier le Témoignage" : "Nouveau Témoignage Client Réel"}
             </h3>
 
-            <form onSubmit={handleSaveFaq} className="space-y-4">
+            <form onSubmit={handleSaveTestimonial} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Question Fréquente</label>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Nom / Prénom du Client *</label>
                 <input
                   type="text"
-                  placeholder="Ex: Les produits sont-ils authentiques ?"
-                  value={faqForm.question}
-                  onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
+                  placeholder="Ex: Aminata K., Traoré O."
+                  value={testimonialForm.clientName}
+                  onChange={(e) => setTestimonialForm({ ...testimonialForm, clientName: e.target.value })}
                   className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Catégorie</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Produits, Livraison, Authentification, Commandes"
-                  value={faqForm.category}
-                  onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Produit Concerné</label>
+                <select
+                  value={testimonialForm.productId}
+                  onChange={(e) => setTestimonialForm({ ...testimonialForm, productId: e.target.value })}
                   className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                />
+                >
+                  <option value="">Témoignage Général / Tous produits</option>
+                  {catalogProducts.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.selling_price} XOF)
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Réponse Officielle</label>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Texte du Témoignage Client *</label>
                 <textarea
                   rows={4}
-                  placeholder="Rédigez la réponse précise que l'Agent IA doit donner..."
-                  value={faqForm.answer}
-                  onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  placeholder="Ex: J'ai commencé le kit il y a 2 semaines, j'ai déjà perdu 3kg et je me sens beaucoup plus légère ! Merci WILLShop !"
+                  value={testimonialForm.text}
+                  onChange={(e) => setTestimonialForm({ ...testimonialForm, text: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-sans"
                   required
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowFaqModal(false)}
-                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold transition-all"
-                >
-                  Enregistrer
-                </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Source du retour</label>
+                  <select
+                    value={testimonialForm.source}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, source: e.target.value })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  >
+                    <option value="WhatsApp">Message WhatsApp</option>
+                    <option value="Boutique">Client en Boutique</option>
+                    <option value="Facebook">Facebook / Instagram</option>
+                    <option value="Appel">Appel Téléphonique</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Date</label>
+                  <input
+                    type="date"
+                    value={testimonialForm.date}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, date: e.target.value })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
+                  />
+                </div>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* MODAL 4: POLICY ADD / EDIT */}
-      {showPolicyModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <FileCheck className="w-5 h-5 text-amber-400" />
-              {editingPolicy ? "Modifier la Politique" : "Ajouter une Politique Commerciale"}
-            </h3>
-
-            <form onSubmit={handleSavePolicy} className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Titre de la Politique</label>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">URL Image / Capture d'écran (optionnel)</label>
                 <input
-                  type="text"
-                  placeholder="Ex: Politique de retour & remboursement"
-                  value={policyForm.title}
-                  onChange={(e) => setPolicyForm({ ...policyForm, title: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Contenu Réglementaire</label>
-                <textarea
-                  rows={5}
-                  placeholder="Détaillez les conditions, délais et procédures de cette politique..."
-                  value={policyForm.content}
-                  onChange={(e) => setPolicyForm({ ...policyForm, content: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
-                  required
+                  type="url"
+                  placeholder="https://..."
+                  value={testimonialForm.mediaUrl}
+                  onChange={(e) => setTestimonialForm({ ...testimonialForm, mediaUrl: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
                 />
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowPolicyModal(false)}
-                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold hover:bg-gray-700 transition-all"
+                  onClick={() => setShowTestimonialModal(false)}
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold transition-all"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl text-xs font-bold"
                 >
-                  Enregistrer
+                  Enregistrer le témoignage
                 </button>
               </div>
             </form>
@@ -2116,49 +2039,25 @@ export default function AIAgentsConfigPage() {
                   <button
                     type="submit"
                     disabled={isExecutingTest}
-                    className="px-5 py-3 bg-[#7B61FF] hover:bg-[#684DFE] disabled:opacity-50 text-white rounded-xl font-semibold text-xs transition-all flex items-center gap-2"
+                    className="px-5 py-3 bg-[#7B61FF] hover:bg-[#684DFE] disabled:opacity-50 text-white rounded-xl font-semibold text-xs flex items-center gap-2"
                   >
-                    {isExecutingTest ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        Tester
-                      </>
-                    )}
+                    {isExecutingTest ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
             </form>
 
-            {/* TEST RESULT OUTPUT */}
             {testResult && (
               <div className="bg-[#0B0B10] border border-[#181824] p-4 rounded-2xl space-y-3">
                 <div className="flex items-center justify-between font-mono text-xs border-b border-white/5 pb-2">
                   <span className="text-gray-400">Résultat Anthropic API :</span>
-                  {testResult.success ? (
-                    <span className="text-emerald-400 font-bold flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      HTTP 200 OK ({testResult.latencyMs}ms)
-                    </span>
-                  ) : (
-                    <span className="text-red-400 font-bold flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      ERREUR ({testResult.latencyMs}ms)
-                    </span>
-                  )}
+                  <span className={testResult.success ? "text-emerald-400 font-bold" : "text-red-400 font-bold"}>
+                    {testResult.success ? `HTTP 200 OK (${testResult.latencyMs}ms)` : `ERREUR (${testResult.latencyMs}ms)`}
+                  </span>
                 </div>
-
                 {testResult.success ? (
-                  <div className="space-y-2">
-                    <div className="bg-[#181824] p-3.5 rounded-xl border border-white/5 text-sm text-gray-200">
-                      <p className="whitespace-pre-wrap">{testResult.responseText}</p>
-                    </div>
-                    <div className="flex items-center gap-3 font-mono text-[11px] text-gray-400">
-                      <span>Modèle: <strong className="text-emerald-400">claude-sonnet-5</strong></span>
-                      <span>•</span>
-                      <span>Handoff: <strong className={testResult.triggerHandoff ? "text-amber-400" : "text-gray-400"}>{testResult.triggerHandoff ? "OUI" : "NON"}</strong></span>
-                    </div>
+                  <div className="bg-[#181824] p-3.5 rounded-xl border border-white/5 text-sm text-gray-200">
+                    <p className="whitespace-pre-wrap">{testResult.responseText}</p>
                   </div>
                 ) : (
                   <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-300">

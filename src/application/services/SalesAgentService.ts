@@ -7,7 +7,7 @@
 import { IAIGateway } from '../../domain/interfaces/IAIGateway';
 import { Customer, Product } from '../../domain/entities/DataCoreEntities';
 import { Message } from '../../domain/entities/WhatsAppCRMEntities';
-import { AIToolsRegistry } from './AIToolsRegistry';
+import { AIToolsRegistry, ToolExecutionContextOptions } from './AIToolsRegistry';
 import { AnthropicAIGateway } from '../../infrastructure/ai/AnthropicAIGateway';
 
 export interface SalesAgentContext {
@@ -64,7 +64,8 @@ export class SalesAgentService {
     recentMessages: Message[],
     availableProducts: Product[],
     organizationId?: string,
-    aiAgentConfig?: any
+    aiAgentConfig?: any,
+    execOptions?: ToolExecutionContextOptions
   ): Promise<{ responseText: string; triggerHandoff: boolean; confidence: number }> {
     const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts);
 
@@ -95,6 +96,7 @@ export class SalesAgentService {
     const faqs = (aiAgentConfig?.faqs || []).filter((f: any) => f.status !== 'ARCHIVED');
     const policies = (aiAgentConfig?.policies || []).filter((p: any) => p.status !== 'INACTIVE');
     const knowledgeBase = (aiAgentConfig?.knowledge_base || []).filter((k: any) => k.status !== 'ARCHIVED');
+    const testimonials = (aiAgentConfig?.testimonials || []).filter((t: any) => t.status !== 'ARCHIVED');
 
     const companyPrompt = companyInfo
       ? `=== IDENTITÉ ENTREPRISE ===
@@ -125,6 +127,12 @@ ${policies.map((p: any) => `[${p.title}]: ${p.content}`).join('\n')}
 `
       : '';
 
+    const testimonialsPrompt = testimonials.length > 0
+      ? `=== TÉMOIGNAGES CLIENTS RÉELS ===
+${testimonials.map((t: any) => `[Témoignage ID: ${t.id}] ${t.clientName}: "${t.text}"`).join('\n')}
+`
+      : '';
+
     const systemPrompt = `Tu es ${agentName}, l'Agent Commercial Virtuel de WILLShop OS.
 Ton de communication : ${agentTone}.
 ${customInstructions ? `INSTRUCTIONS PARTICULIÈRES :\n${customInstructions}\n` : ''}
@@ -132,13 +140,16 @@ ${companyPrompt}
 ${paymentsPrompt}
 ${faqsPrompt}
 ${policiesPrompt}
+${testimonialsPrompt}
 
 REGLES ABSOLUES :
 1. Présente toujours les produits avec leurs prix exacts du catalogue.
-2. Ne jamais inventer de prix ni de stock.
-3. Si le client demande la livraison dans une zone/quartier, utilise l'outil check_delivery_zone.
-4. Si le client veut commander ou demande le statut d'une commande, utilise les outils mis à ta disposition.
-5. Si le client demande un conseiller humain, réponds poliment et utilise l'outil escalate_to_human.`;
+2. Ne jamais inventer de prix, de stock, de témoignage ou de tarif de livraison.
+3. Lorsqu un produit est demandé ou présenté, présente le tarif et utilise l outil send_product_image pour envoyer sa photo officielle au client sur WhatsApp sans lui demander s il souhaite la voir.
+4. Si le client a des doutes ou demande des témoignages/avis, utilise search_testimonials ou send_testimonial. Si aucun témoignage n existe, indique-le honnêtement sans en inventer.
+5. Si le client demande la livraison dans une zone/quartier, utilise l outil check_delivery_zone.
+6. Si le client veut commander ou demande le statut d une commande, utilise les outils mis à ta disposition.
+7. Si le client demande un conseiller humain, réponds poliment et utilise l outil escalate_to_human.`;
 
     const result = await (this.aiGateway as AnthropicAIGateway).generateCompletion({
       agentName,
@@ -161,7 +172,7 @@ REGLES ABSOLUES :
     // Handle tool execution if LLM requested a tool call
     if (result.toolCalls && result.toolCalls.length > 0 && this.toolsRegistry && organizationId) {
       for (const toolCall of result.toolCalls) {
-        const execRes = await this.toolsRegistry.executeTool(toolCall.name, toolCall.input, organizationId, aiAgentConfig);
+        const execRes = await this.toolsRegistry.executeTool(toolCall.name, toolCall.input, organizationId, aiAgentConfig, execOptions);
         if (execRes.triggerHandoff) {
           triggerHandoff = true;
         }

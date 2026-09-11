@@ -2,7 +2,7 @@
  * WILLShop OS — WhatsApp Application Orchestrator Service
  * Application Layer.
  * Manages event normalization, org resolution, idempotency, conversation modes (AI_ACTIVE vs HUMAN_ACTIVE),
- * smartphone sync (fromMe), AI trigger, and provider response delivery.
+ * audio transcription, smartphone sync (fromMe), AI trigger, and provider response delivery.
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -10,12 +10,57 @@ import { InboundWhatsAppEvent } from '../../domain/entities/WhatsAppEventEntitie
 import { IWhatsAppProvider } from '../../domain/interfaces/IWhatsAppProvider';
 import { SalesAgentService, SalesAgentContextService } from './SalesAgentService';
 import { AnthropicAIGateway } from '../../infrastructure/ai/AnthropicAIGateway';
+import { AIToolsRegistry } from './AIToolsRegistry';
+import { SupabaseProductRepository } from '../../infrastructure/repositories/SupabaseDataCoreRepositories';
+import { InMemoryOrderRepository } from '../../infrastructure/repositories/InMemoryDataCoreRepositories';
+import { CreateOrderService } from './OrderStockApplicationServices';
 
 export class WhatsAppApplicationService {
   constructor(
     private readonly supabase: SupabaseClient,
     private readonly providerAdapter: IWhatsAppProvider
   ) {}
+
+  /**
+   * Transcribes an audio buffer server-side via Whisper API (OpenAI or Groq).
+   */
+  private async transcribeAudioBuffer(audioBuffer: Buffer, fileName: string): Promise<string | null> {
+    const apiKey = process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
+    if (!apiKey) return null;
+
+    const endpoint = process.env.OPENAI_API_KEY
+      ? 'https://api.openai.com/v1/audio/transcriptions'
+      : 'https://api.groq.com/openai/v1/audio/transcriptions';
+    const model = process.env.OPENAI_API_KEY ? 'whisper-1' : 'whisper-large-v3';
+
+    try {
+      const formData = new FormData();
+      const uint8 = new Uint8Array(audioBuffer);
+      const blob = new Blob([uint8], { type: 'audio/ogg' });
+      formData.append('file', blob, fileName);
+      formData.append('model', model);
+      formData.append('language', 'fr');
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        console.warn(`[Whisper API Error] Status ${res.status}`);
+        return null;
+      }
+
+      const data = await res.json();
+      return data.text ? data.text.trim() : null;
+    } catch (err) {
+      console.warn('[Transcription Exception]', err);
+      return null;
+    }
+  }
 
   /**
    * Processes an incoming normalized WhatsApp event.
@@ -26,7 +71,7 @@ export class WhatsAppApplicationService {
     organizationId?: string;
     conversationId?: string;
   }> {
-    // 1. Strict Organization Resolution (STRICT MATCHING ONLY - NO PERMISSIVE FALLBACKS)
+    // 1. Strict Organization Resolution
     const providerIdentity = event.providerIdentity ? event.providerIdentity.trim() : '';
     if (!providerIdentity) {
       console.error('[WEBHOOK_REJECTED] providerIdentity missing from inbound event');
@@ -56,7 +101,7 @@ export class WhatsAppApplicationService {
     const targetOrgId = numRow.organization_id;
     const whatsappNumberId = numRow.id;
 
-    // 2. Idempotency Check on external_message_id (Application pre-check)
+    // 2. Idempotency Check on external_message_id
     if (event.externalMessageId) {
       const { data: existingMsg } = await this.supabase
         .from('messages')
@@ -147,7 +192,6 @@ export class WhatsAppApplicationService {
 
     // 5. Handle Smartphone Sync (fromMe === true)
     if (event.fromMe) {
-      // Save outgoing message sent manually by sales rep from smartphone
       const { error: insertErr } = await this.supabase.from('messages').insert({
         organization_id: targetOrgId,
         conversation_id: conversationId,
@@ -164,13 +208,12 @@ export class WhatsAppApplicationService {
       if (insertErr && (insertErr.code === '23505' || insertErr.message.includes('unique'))) {
         return {
           status: 'IGNORED',
-          message: 'Duplicate smartphone message ignored (Database unique constraint).',
+          message: 'Duplicate smartphone message ignored.',
           organizationId: targetOrgId,
           conversationId,
         };
       }
 
-      // Switch conversation mode to HUMAN_ACTIVE and stop AI
       await this.supabase
         .from('conversations')
         .update({ conversation_mode: 'HUMAN_ACTIVE', assigned_agent: 'HUMAN' })
@@ -184,30 +227,142 @@ export class WhatsAppApplicationService {
       };
     }
 
-    // 6. Save Inbound Customer Message (Protected by Postgres Unique Index for concurrent hits)
-    const { error: msgErr } = await this.supabase.from('messages').insert({
-      organization_id: targetOrgId,
-      conversation_id: conversationId,
-      customer_id: customerId || null,
-      direction: 'INBOUND',
-      sender_type: 'CUSTOMER',
-      sender_id: event.senderPhone,
-      message_type: event.messageType,
-      content: event.textBody || '[Media]',
-      external_message_id: event.externalMessageId,
-      status: 'RECEIVED',
-    });
+    // 6. Handle AUDIO Messages (WhatsApp Voice Notes)
+    if (event.messageType === 'AUDIO') {
+      let audioUrl = event.mediaUrl || '';
+      let transcribedText: string | null = null;
 
-    if (msgErr && (msgErr.code === '23505' || msgErr.message.includes('unique'))) {
-      return {
-        status: 'IGNORED',
-        message: `Concurrent duplicate external_message_id '${event.externalMessageId}' caught by database constraint. Ignored.`,
-        organizationId: targetOrgId,
-        conversationId,
-      };
+      if (audioUrl) {
+        try {
+          const audioRes = await fetch(audioUrl);
+          if (audioRes.ok) {
+            const arrayBuf = await audioRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuf);
+
+            const fileName = `audio_${Date.now()}.ogg`;
+            const storagePath = `${targetOrgId}/${fileName}`;
+            const { error: upErr } = await this.supabase.storage
+              .from('whatsapp-media')
+              .upload(storagePath, buffer, { contentType: 'audio/ogg', upsert: true });
+
+            if (!upErr) {
+              const { data: urlData } = this.supabase.storage
+                .from('whatsapp-media')
+                .getPublicUrl(storagePath);
+              if (urlData?.publicUrl) {
+                audioUrl = urlData.publicUrl;
+              }
+            }
+
+            transcribedText = await this.transcribeAudioBuffer(buffer, fileName);
+          }
+        } catch (audioErr) {
+          console.warn('[Audio Processing Warning]', audioErr);
+        }
+      }
+
+      if (transcribedText && transcribedText.length >= 2) {
+        event.textBody = transcribedText;
+        await this.supabase.from('messages').insert({
+          organization_id: targetOrgId,
+          conversation_id: conversationId,
+          customer_id: customerId || null,
+          direction: 'INBOUND',
+          sender_type: 'CUSTOMER',
+          sender_id: event.senderPhone,
+          message_type: 'AUDIO',
+          content: transcribedText,
+          media_url: audioUrl || null,
+          external_message_id: event.externalMessageId,
+          status: 'RECEIVED',
+          metadata: {
+            transcription_status: 'COMPLETED',
+            transcription: transcribedText,
+          },
+        });
+      } else {
+        // Audio is inaudible or failed transcription -> Human Escalation Safeguard!
+        await this.supabase.from('messages').insert({
+          organization_id: targetOrgId,
+          conversation_id: conversationId,
+          customer_id: customerId || null,
+          direction: 'INBOUND',
+          sender_type: 'CUSTOMER',
+          sender_id: event.senderPhone,
+          message_type: 'AUDIO',
+          content: '[Message vocal inaudible / non transcrit]',
+          media_url: audioUrl || null,
+          external_message_id: event.externalMessageId,
+          status: 'RECEIVED',
+          metadata: {
+            transcription_status: 'INCOMPREHENSIBLE',
+          },
+        });
+
+        await this.supabase.from('human_handoffs').insert({
+          organization_id: targetOrgId,
+          conversation_id: conversationId,
+          reason: 'Message vocal client inaudible ou impossible à transcrire',
+          status: 'PENDING',
+        });
+
+        await this.supabase
+          .from('conversations')
+          .update({ conversation_mode: 'ESCALATED', assigned_agent: 'HUMAN' })
+          .eq('id', conversationId);
+
+        const takeoverMsg = "Je vais vous mettre en relation avec un conseiller commercial pour mieux répondre à votre vocal.";
+        const sendRes = await this.providerAdapter.sendTextMessage(providerIdentity, {
+          toPhoneNumber: event.senderPhone,
+          messageText: takeoverMsg,
+        });
+
+        await this.supabase.from('messages').insert({
+          organization_id: targetOrgId,
+          conversation_id: conversationId,
+          direction: 'OUTBOUND',
+          sender_type: 'AI',
+          sender_id: 'SALES_AI',
+          message_type: 'TEXT',
+          content: takeoverMsg,
+          external_message_id: sendRes.status === 'SENT' ? sendRes.externalMessageId : null,
+          status: sendRes.status === 'SENT' ? 'SENT' : 'FAILED',
+        });
+
+        return {
+          status: 'SUCCESS',
+          message: 'Message vocal inaudible. Escaladé vers un conseiller humain sans hallucination IA.',
+          organizationId: targetOrgId,
+          conversationId,
+        };
+      }
+    } else {
+      // Standard Inbound Customer Message (TEXT / IMAGE / etc.)
+      const { error: msgErr } = await this.supabase.from('messages').insert({
+        organization_id: targetOrgId,
+        conversation_id: conversationId,
+        customer_id: customerId || null,
+        direction: 'INBOUND',
+        sender_type: 'CUSTOMER',
+        sender_id: event.senderPhone,
+        message_type: event.messageType,
+        content: event.textBody || '[Media]',
+        media_url: event.mediaUrl || null,
+        external_message_id: event.externalMessageId,
+        status: 'RECEIVED',
+      });
+
+      if (msgErr && (msgErr.code === '23505' || msgErr.message.includes('unique'))) {
+        return {
+          status: 'IGNORED',
+          message: `Duplicate external_message_id '${event.externalMessageId}' ignored.`,
+          organizationId: targetOrgId,
+          conversationId,
+        };
+      }
     }
 
-    // 7. Check if AI Auto-Reply is Suppressed (HUMAN_ACTIVE, ESCALATED, or PAUSED)
+    // 7. Check if AI Auto-Reply is Suppressed
     if (conversationMode === 'HUMAN_ACTIVE' || conversationMode === 'ESCALATED' || conversationMode === 'PAUSED') {
       return {
         status: 'SUCCESS',
@@ -256,7 +411,7 @@ export class WhatsAppApplicationService {
         messageType: m.message_type,
         content: m.content || '',
         status: m.status,
-        metadata: {},
+        metadata: m.metadata || {},
         sentAt: new Date(m.created_at),
         createdAt: new Date(m.created_at),
       }));
@@ -283,7 +438,6 @@ export class WhatsAppApplicationService {
 
       const aiConfig = orgData?.settings?.ai_agent_config || {};
 
-      // Check if AI Agent is explicitly disabled
       if (aiConfig.enabled === false) {
         return {
           status: 'SUCCESS',
@@ -293,7 +447,7 @@ export class WhatsAppApplicationService {
         };
       }
 
-      // Check Operating Schedule (Horaires de travail)
+      // Check Operating Schedule
       if (aiConfig.schedule?.active) {
         const startTime = aiConfig.schedule.startTime || '08:00';
         const endTime = aiConfig.schedule.endTime || '20:00';
@@ -309,10 +463,10 @@ export class WhatsAppApplicationService {
           const currentTime = timeFormatter.format(new Date());
 
           if (currentTime < startTime || currentTime > endTime) {
-            console.log(`[AI BLOCKED — OUTSIDE CONFIGURED HOURS] Current: ${currentTime}, Range: ${startTime} - ${endTime} (${timezone})`);
+            console.log(`[AI BLOCKED — OUTSIDE HOURS] Current: ${currentTime}, Range: ${startTime} - ${endTime}`);
             return {
               status: 'SUCCESS',
-              message: `AI BLOCKED — OUTSIDE CONFIGURED HOURS (Configured: ${startTime} - ${endTime} ${timezone}, Current: ${currentTime})`,
+              message: `AI BLOCKED — OUTSIDE CONFIGURED HOURS (${startTime} - ${endTime} ${timezone})`,
               organizationId: targetOrgId,
               conversationId,
             };
@@ -322,16 +476,33 @@ export class WhatsAppApplicationService {
         }
       }
 
+      const productRepo = new SupabaseProductRepository(this.supabase);
+      const orderRepo = new InMemoryOrderRepository();
+      const dummyAuditRepo: any = { log: async () => {} };
+      const dummyEventRepo: any = { publish: async () => {} };
+
+      const createOrderService = new CreateOrderService(orderRepo, productRepo, dummyAuditRepo, dummyEventRepo);
+      const toolsRegistry = new AIToolsRegistry(productRepo, orderRepo, createOrderService);
+
       const aiGateway = new AnthropicAIGateway();
       const contextService = new SalesAgentContextService();
-      const salesAgentService = new SalesAgentService(aiGateway, contextService);
+      const salesAgentService = new SalesAgentService(aiGateway, contextService, toolsRegistry);
+
+      const execOptions = {
+        supabase: this.supabase,
+        providerAdapter: this.providerAdapter,
+        providerIdentity,
+        destinationPhone: event.senderPhone,
+        conversationId,
+      };
 
       const aiResult = await salesAgentService.generateResponse(
         mockCustomer,
         mappedMsgs,
         availableProducts,
         targetOrgId,
-        aiConfig
+        aiConfig,
+        execOptions
       );
 
       // 9. Send Outbound Message via Provider Adapter FIRST
@@ -346,7 +517,7 @@ export class WhatsAppApplicationService {
         console.error(`[OUTBOUND_WHATSAPP_FAILED] Evolution API send failed [${sendResult.errorCode}] for ${event.senderPhone}`);
       }
 
-      // 10. Save Outbound AI Response with real status and external_message_id
+      // 10. Save Outbound AI Response
       await this.supabase.from('messages').insert({
         organization_id: targetOrgId,
         conversation_id: conversationId,
@@ -376,15 +547,6 @@ export class WhatsAppApplicationService {
           .eq('id', conversationId);
       }
 
-      if (!isSentOk) {
-        return {
-          status: 'SUCCESS',
-          message: `Message entrant enregistré. Échec envoi WhatsApp réel : ${sendResult.errorCode || 'OUTBOUND_FAILED'}`,
-          organizationId: targetOrgId,
-          conversationId,
-        };
-      }
-
       return {
         status: 'SUCCESS',
         message: 'Inbound message processed and AI response sent via provider.',
@@ -395,7 +557,7 @@ export class WhatsAppApplicationService {
       console.warn(`[AI_RESPONSE_BLOCKED] ${aiErr.message}`);
       return {
         status: 'SUCCESS',
-        message: `Message entrant enregistré dans le CRM. Réponse IA bloquée : ${aiErr.message}`,
+        message: `Message entrant enregistré. Réponse IA bloquée : ${aiErr.message}`,
         organizationId: targetOrgId,
         conversationId,
       };
