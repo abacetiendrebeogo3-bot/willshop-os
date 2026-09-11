@@ -90,7 +90,14 @@ export async function POST(request: NextRequest) {
     }
 
     // Ensure Webhook is configured
-    await evolutionAdapter.setWebhook(instanceName, webhookUrl);
+    const webhookRes = await evolutionAdapter.setWebhook(instanceName, webhookUrl);
+    if (!webhookRes.success) {
+      console.error(`[Evolution Instance Route] Webhook configuration failed for ${instanceName}: ${webhookRes.error}`);
+      return NextResponse.json(
+        { error: `Instance connectée mais configuration du webhook échouée : ${webhookRes.error || 'Erreur inconnue'}` },
+        { status: 502 }
+      );
+    }
 
     // 6. Check current connection state
     const connState = await evolutionAdapter.getConnectionState(instanceName);

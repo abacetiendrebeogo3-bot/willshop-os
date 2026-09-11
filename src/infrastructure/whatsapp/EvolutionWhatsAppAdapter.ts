@@ -207,7 +207,10 @@ export class EvolutionWhatsAppAdapter implements IWhatsAppProvider {
       const qrData = resData?.qrcode || resData?.hash || {};
 
       if (webhookUrl) {
-        await this.setWebhook(instanceName, webhookUrl).catch(() => null);
+        const whResult = await this.setWebhook(instanceName, webhookUrl);
+        if (!whResult.success) {
+          console.error(`[createInstance] setWebhook non-fatal warning: ${whResult.error}`);
+        }
       }
 
       return {
@@ -312,7 +315,7 @@ export class EvolutionWhatsAppAdapter implements IWhatsAppProvider {
   /**
    * Sets up or updates the webhook on Evolution API.
    */
-  async setWebhook(instanceName: string, webhookUrl: string): Promise<boolean> {
+  async setWebhook(instanceName: string, webhookUrl: string): Promise<{ success: boolean; error?: string }> {
     try {
       const response = await fetch(`${this.baseUrl}/webhook/set/${instanceName}`, {
         method: 'POST',
@@ -333,9 +336,23 @@ export class EvolutionWhatsAppAdapter implements IWhatsAppProvider {
           ],
         }),
       });
-      return response.ok;
-    } catch {
-      return false;
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        console.error(`[EvolutionAPI setWebhook Error] HTTP ${response.status} for instance ${instanceName}:`, errText);
+        return {
+          success: false,
+          error: `HTTP_${response.status}: ${errText}`,
+        };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      console.error(`[EvolutionAPI setWebhook Exception] for instance ${instanceName}:`, err);
+      return {
+        success: false,
+        error: err.message || 'Erreur réseau/inconnue lors de la configuration du webhook',
+      };
     }
   }
 
