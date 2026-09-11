@@ -130,16 +130,18 @@ export async function GET() {
           apikey: evoKey,
         },
         body: JSON.stringify({
-          enabled: true,
-          url: webhookTargetUrl,
-          byEvents: false,
-          base64: false,
-          events: [
-            'MESSAGES_UPSERT',
-            'MESSAGES_UPDATE',
-            'CONNECTION_UPDATE',
-            'QRCODE_UPDATED',
-          ],
+          webhook: {
+            enabled: true,
+            url: webhookTargetUrl,
+            byEvents: false,
+            base64: false,
+            events: [
+              'MESSAGES_UPSERT',
+              'MESSAGES_UPDATE',
+              'CONNECTION_UPDATE',
+              'QRCODE_UPDATED',
+            ],
+          },
         }),
       });
       const setText = await setRes.text().catch(() => '');
