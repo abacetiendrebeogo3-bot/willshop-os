@@ -101,13 +101,48 @@ export async function GET() {
     };
   }
 
+  let evolutionCheck: any = { status: 'UNKNOWN' };
+  const evoUrl = (process.env.EVOLUTION_API_URL || '').trim().replace(/\/+$/, '');
+  const evoKey = (process.env.EVOLUTION_API_KEY || '').trim().replace(/^["']|["']$/g, '');
+
+  if (evoUrl && evoKey) {
+    const evoStart = Date.now();
+    try {
+      const evoRes = await fetch(`${evoUrl}/instance/connectionState/ws_org_27f3fcc3402b`, {
+        headers: { apikey: evoKey },
+      });
+      const evoText = await evoRes.text().catch(() => '');
+      if (evoRes.ok) {
+        evolutionCheck = {
+          status: 'PASS',
+          httpStatus: evoRes.status,
+          latencyMs: Date.now() - evoStart,
+          response: evoText,
+        };
+      } else {
+        evolutionCheck = {
+          status: 'FAIL',
+          httpStatus: evoRes.status,
+          latencyMs: Date.now() - evoStart,
+          error: `HTTP ${evoRes.status}: EVOLUTION_API_KEY non autorisé par le serveur Railway (${evoText || 'Unauthorized'})`,
+        };
+      }
+    } catch (err: any) {
+      evolutionCheck = {
+        status: 'FAIL',
+        error: `Exception: ${err.message}`,
+      };
+    }
+  }
+
   return NextResponse.json({
-    status: isHealthy ? 'ok' : 'degraded',
+    status: isHealthy && anthropicDirect.status === 'PASS' && evolutionCheck.status === 'PASS' ? 'ok' : 'degraded',
     system: 'WILLShop OS Multi-Tenant Platform',
     timestamp: new Date().toISOString(),
     multiTenantRLSEnforced: true,
     envCheck,
     anthropicDirect,
+    evolutionCheck,
   });
 }
 
