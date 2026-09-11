@@ -46,10 +46,14 @@ export class AnthropicAIGateway implements IAIGateway {
       const payload: Record<string, any> = {
         model: this.defaultModel,
         max_tokens: request.maxTokens || 400,
-        temperature: request.temperature ?? 0.3,
         system: systemMessage,
         messages: userMessages,
       };
+
+      // Anthropic deprecated temperature for claude-sonnet-5 (returns HTTP 400 if passed)
+      if (request.temperature !== undefined && !this.defaultModel.includes('claude-sonnet-5')) {
+        payload.temperature = request.temperature;
+      }
 
       if (request.tools && request.tools.length > 0) {
         payload.tools = request.tools;

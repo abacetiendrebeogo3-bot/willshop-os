@@ -40,6 +40,16 @@ export async function GET() {
     for (const model of candidateModels) {
       if (!model) continue;
       try {
+        const payload: Record<string, any> = {
+          model,
+          max_tokens: 30,
+          messages: [{ role: 'user', content: 'Réponds uniquement : TEST_ANTHROPIC_OK' }],
+        };
+
+        if (!model.includes('claude-sonnet-5')) {
+          payload.temperature = 0;
+        }
+
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST',
           headers: {
@@ -47,12 +57,7 @@ export async function GET() {
             'anthropic-version': '2023-06-01',
             'content-type': 'application/json',
           },
-          body: JSON.stringify({
-            model,
-            max_tokens: 30,
-            temperature: 0,
-            messages: [{ role: 'user', content: 'Réponds uniquement : TEST_ANTHROPIC_OK' }],
-          }),
+          body: JSON.stringify(payload),
         });
         if (response.ok) {
           const data = await response.json();
