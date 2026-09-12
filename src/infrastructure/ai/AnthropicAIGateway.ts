@@ -120,12 +120,12 @@ export class AnthropicAIGateway implements IAIGateway {
       const cacheReadInputTokens = resData.usage?.cache_read_input_tokens || 0;
       const totalTokens = promptTokens + completionTokens + cacheCreationInputTokens + cacheReadInputTokens;
 
-      // Calculate estimated cost USD
+      // Calculate estimated cost USD for Anthropic Claude models
       const isHaiku = targetModel.toLowerCase().includes('haiku');
-      const baseInputRate = isHaiku ? 0.0000008 : 0.000003;
-      const cacheReadRate = isHaiku ? 0.00000008 : 0.0000003;
-      const cacheCreateRate = isHaiku ? 0.000001 : 0.00000375;
-      const outputRate = isHaiku ? 0.000004 : 0.000015;
+      const baseInputRate = isHaiku ? 0.000001 : 0.000003;
+      const cacheReadRate = isHaiku ? 0.0000001 : 0.0000003;
+      const cacheCreateRate = isHaiku ? 0.00000125 : 0.00000375;
+      const outputRate = isHaiku ? 0.000005 : 0.000015;
 
       const estimatedCostUsd =
         (promptTokens * baseInputRate) +

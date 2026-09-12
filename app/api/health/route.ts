@@ -28,9 +28,8 @@ export async function GET() {
     const candidateModels = [
       process.env.ANTHROPIC_MODEL || 'claude-sonnet-5',
       'claude-sonnet-5',
+      'claude-haiku-4-5-20251001',
       'claude-3-5-sonnet-latest',
-      'claude-3-5-sonnet-20241022',
-      'claude-3-5-haiku-20241022',
       'claude-3-haiku-20240307',
     ].filter(Boolean) as string[];
 

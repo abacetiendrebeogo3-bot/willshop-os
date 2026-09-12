@@ -60,21 +60,34 @@ export class SalesAgentService {
   ) {}
 
   private selectModel(userQuery: string): string {
+    const defaultHaiku = process.env.ANTHROPIC_HAIKU_MODEL || 'claude-haiku-4-5-20251001';
+    const defaultSonnet = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+
     const q = userQuery.toLowerCase().trim();
-    // Fast path / lightweight queries use Claude 3.5 Haiku
+
+    // 1. Complex Commercial closing, Objections, Negotiations, Orders, Discounts -> Sonnet 5
+    const complexPatterns = [
+      /cher\b/, /rabais/, /réduction/, /promo/, /négoci/, /remise/,
+      /commander/, /achat/, /payer/, /panier/, /facture/, /livrer à/, /livraison à/
+    ];
+
+    if (complexPatterns.some((p) => p.test(q))) {
+      return defaultSonnet;
+    }
+
+    // 2. Simple interactions (Salutations, Thanks, FAQs, Simple Product Info / Stock / Availability queries) -> Haiku 4.5
     const simplePatterns = [
       /^bonjour\b/, /^salut\b/, /^bonsoir\b/, /^coucou\b/, /^hello\b/, /^hi\b/,
       /^merci\b/, /^super\b/, /^d['\s]?accord\b/, /^ok\b/, /^parfait\b/,
-      /horaire/, /adresse/, /boutique/, /situé/, /ouvert/
+      /horaire/, /adresse/, /boutique/, /situé/, /ouvert/, /prix/, /disponible/, /stock/, /avis/, /témoignage/
     ];
 
-    const isSimple = simplePatterns.some((pattern) => pattern.test(q));
-    if (isSimple && !q.includes('commander') && !q.includes('prix') && !q.includes('reduction')) {
-      return process.env.ANTHROPIC_HAIKU_MODEL || 'claude-3-5-haiku-20241022';
+    if (simplePatterns.some((p) => p.test(q))) {
+      return defaultHaiku;
     }
 
-    // Commercial closing, orders, objections, pricing, discounts use Sonnet
-    return process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+    // Fallback default to Haiku 4.5 for lightweight chat unless commercial closing
+    return defaultHaiku;
   }
 
   async generateResponse(
