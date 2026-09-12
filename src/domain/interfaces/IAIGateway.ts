@@ -14,6 +14,7 @@ export interface AIModelRequest {
   messages: AIModelMessage[];
   temperature?: number;
   maxTokens?: number;
+  model?: string;
   responseFormat?: 'text' | 'json_object';
 }
 
@@ -21,7 +22,10 @@ export interface AIModelResponse {
   content: string;
   promptTokens: number;
   completionTokens: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
   totalTokens: number;
+  estimatedCostUsd?: number;
   model: string;
   provider: string;
 }

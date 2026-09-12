@@ -59,6 +59,24 @@ export class SalesAgentService {
     private readonly toolsRegistry?: AIToolsRegistry
   ) {}
 
+  private selectModel(userQuery: string): string {
+    const q = userQuery.toLowerCase().trim();
+    // Fast path / lightweight queries use Claude 3.5 Haiku
+    const simplePatterns = [
+      /^bonjour\b/, /^salut\b/, /^bonsoir\b/, /^coucou\b/, /^hello\b/, /^hi\b/,
+      /^merci\b/, /^super\b/, /^d['\s]?accord\b/, /^ok\b/, /^parfait\b/,
+      /horaire/, /adresse/, /boutique/, /situé/, /ouvert/
+    ];
+
+    const isSimple = simplePatterns.some((pattern) => pattern.test(q));
+    if (isSimple && !q.includes('commander') && !q.includes('prix') && !q.includes('reduction')) {
+      return process.env.ANTHROPIC_HAIKU_MODEL || 'claude-3-5-haiku-20241022';
+    }
+
+    // Commercial closing, orders, objections, pricing, discounts use Sonnet
+    return process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+  }
+
   async generateResponse(
     customer: Customer,
     recentMessages: Message[],
@@ -66,7 +84,20 @@ export class SalesAgentService {
     organizationId?: string,
     aiAgentConfig?: any,
     execOptions?: ToolExecutionContextOptions
-  ): Promise<{ responseText: string; triggerHandoff: boolean; confidence: number }> {
+  ): Promise<{
+    responseText: string;
+    triggerHandoff: boolean;
+    confidence: number;
+    usage?: {
+      promptTokens: number;
+      completionTokens: number;
+      cacheCreationInputTokens?: number;
+      cacheReadInputTokens?: number;
+      totalTokens: number;
+      estimatedCostUsd?: number;
+      model: string;
+    };
+  }> {
     const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts);
 
     const lastMessage = recentMessages[recentMessages.length - 1];
@@ -86,6 +117,7 @@ export class SalesAgentService {
     }
 
     const toolDefs = AIToolsRegistry.getToolDefinitions();
+    const selectedModel = this.selectModel(userMessageContent);
 
     const agentName = aiAgentConfig?.name || 'Sales AI WILLShop';
     const agentTone = aiAgentConfig?.tone || 'Professionnel & Chaleureux';
@@ -153,6 +185,7 @@ REGLES ABSOLUES :
 
     const result = await (this.aiGateway as AnthropicAIGateway).generateCompletion({
       agentName,
+      model: selectedModel,
       messages: [
         {
           role: 'system',
@@ -183,6 +216,15 @@ REGLES ABSOLUES :
       responseText: result.content || "Merci pour votre message ! Un conseiller est à votre disposition.",
       triggerHandoff,
       confidence: 0.95,
+      usage: {
+        promptTokens: result.promptTokens,
+        completionTokens: result.completionTokens,
+        cacheCreationInputTokens: result.cacheCreationInputTokens,
+        cacheReadInputTokens: result.cacheReadInputTokens,
+        totalTokens: result.totalTokens,
+        estimatedCostUsd: result.estimatedCostUsd,
+        model: result.model,
+      },
     };
   }
 }

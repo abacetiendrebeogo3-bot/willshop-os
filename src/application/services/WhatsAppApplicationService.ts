@@ -496,6 +496,7 @@ export class WhatsAppApplicationService {
         conversationId,
       };
 
+      const startTimeMs = Date.now();
       const aiResult = await salesAgentService.generateResponse(
         mockCustomer,
         mappedMsgs,
@@ -504,6 +505,27 @@ export class WhatsAppApplicationService {
         aiConfig,
         execOptions
       );
+      const latencyMs = Date.now() - startTimeMs;
+
+      // Log AI token usage to Supabase ai_usage_logs
+      if (aiResult.usage) {
+        try {
+          await this.supabase.from('ai_usage_logs').insert({
+            organization_id: targetOrgId,
+            provider: 'anthropic',
+            model: aiResult.usage.model,
+            prompt_tokens: aiResult.usage.promptTokens,
+            completion_tokens: aiResult.usage.completionTokens,
+            total_tokens: aiResult.usage.totalTokens,
+            estimated_cost: aiResult.usage.estimatedCostUsd || 0,
+            latency_ms: latencyMs,
+            operation: 'WHATSAPP_SALES_AGENT',
+            correlation_id: conversationId,
+          });
+        } catch (logErr: any) {
+          console.warn('[AI Usage Log Insert Error]', logErr?.message);
+        }
+      }
 
       // 9. Send Outbound Message via Provider Adapter FIRST
       const sendResult = await this.providerAdapter.sendTextMessage(providerIdentity, {

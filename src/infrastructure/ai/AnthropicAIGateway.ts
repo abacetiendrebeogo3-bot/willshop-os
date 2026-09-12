@@ -34,6 +34,7 @@ export class AnthropicAIGateway implements IAIGateway {
       throw new Error('BLOCKED — ANTHROPIC_API_KEY missing');
     }
 
+    const targetModel = request.model || this.defaultModel;
     const systemMessage = request.messages.find((m) => m.role === 'system')?.content || '';
     const userMessages = request.messages
       .filter((m) => m.role !== 'system')
@@ -43,20 +44,37 @@ export class AnthropicAIGateway implements IAIGateway {
       }));
 
     try {
+      // Build prompt caching structured system block
+      const systemBlock: Array<{ type: string; text: string; cache_control?: { type: 'ephemeral' } }> = [];
+      if (systemMessage) {
+        systemBlock.push({
+          type: 'text',
+          text: systemMessage,
+          cache_control: { type: 'ephemeral' },
+        });
+      }
+
       const payload: Record<string, any> = {
-        model: this.defaultModel,
+        model: targetModel,
         max_tokens: request.maxTokens || 400,
-        system: systemMessage,
+        system: systemBlock.length > 0 ? systemBlock : systemMessage,
         messages: userMessages,
       };
 
-      // Anthropic deprecated temperature for claude-sonnet-5 (returns HTTP 400 if passed)
-      if (request.temperature !== undefined && !this.defaultModel.includes('claude-sonnet-5')) {
+      // Anthropic temperature restriction check for sonnet-5
+      if (request.temperature !== undefined && !targetModel.includes('claude-sonnet-5')) {
         payload.temperature = request.temperature;
       }
 
       if (request.tools && request.tools.length > 0) {
-        payload.tools = request.tools;
+        // Tag last tool definition with ephemeral cache control for Anthropic Prompt Caching
+        const toolsWithCache = request.tools.map((t, idx) => {
+          if (idx === request.tools!.length - 1) {
+            return { ...t, cache_control: { type: 'ephemeral' } };
+          }
+          return t;
+        });
+        payload.tools = toolsWithCache;
       }
 
       const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -64,6 +82,7 @@ export class AnthropicAIGateway implements IAIGateway {
         headers: {
           'x-api-key': this.apiKey,
           'anthropic-version': '2023-06-01',
+          'anthropic-beta': 'prompt-caching-2024-07-31',
           'content-type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -71,7 +90,7 @@ export class AnthropicAIGateway implements IAIGateway {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => '');
-        console.error(`[AnthropicAIGateway API Error] HTTP ${response.status} ${response.statusText} | Model: ${this.defaultModel}`, {
+        console.error(`[AnthropicAIGateway API Error] HTTP ${response.status} ${response.statusText} | Model: ${targetModel}`, {
           httpStatus: response.status,
           statusText: response.statusText,
           errorBody: errorText,
@@ -97,13 +116,32 @@ export class AnthropicAIGateway implements IAIGateway {
 
       const promptTokens = resData.usage?.input_tokens || 0;
       const completionTokens = resData.usage?.output_tokens || 0;
+      const cacheCreationInputTokens = resData.usage?.cache_creation_input_tokens || 0;
+      const cacheReadInputTokens = resData.usage?.cache_read_input_tokens || 0;
+      const totalTokens = promptTokens + completionTokens + cacheCreationInputTokens + cacheReadInputTokens;
+
+      // Calculate estimated cost USD
+      const isHaiku = targetModel.toLowerCase().includes('haiku');
+      const baseInputRate = isHaiku ? 0.0000008 : 0.000003;
+      const cacheReadRate = isHaiku ? 0.00000008 : 0.0000003;
+      const cacheCreateRate = isHaiku ? 0.000001 : 0.00000375;
+      const outputRate = isHaiku ? 0.000004 : 0.000015;
+
+      const estimatedCostUsd =
+        (promptTokens * baseInputRate) +
+        (cacheReadInputTokens * cacheReadRate) +
+        (cacheCreationInputTokens * cacheCreateRate) +
+        (completionTokens * outputRate);
 
       return {
         content: textContent,
         promptTokens,
         completionTokens,
-        totalTokens: promptTokens + completionTokens,
-        model: resData.model || this.defaultModel,
+        cacheCreationInputTokens,
+        cacheReadInputTokens,
+        totalTokens,
+        estimatedCostUsd: Number(estimatedCostUsd.toFixed(6)),
+        model: resData.model || targetModel,
         provider: 'anthropic',
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       };
