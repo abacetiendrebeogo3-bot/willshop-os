@@ -6,7 +6,7 @@
 
 export interface AIModelMessage {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | any;
 }
 
 export interface AIModelRequest {

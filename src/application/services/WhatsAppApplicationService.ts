@@ -142,6 +142,115 @@ export class WhatsAppApplicationService {
     return null;
   }
 
+  private detectImageMimeType(buf: Buffer): string {
+    if (!buf || buf.length < 4) return 'image/jpeg';
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+    if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'image/gif';
+    if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  private isValidImageBuffer(buf: Buffer): boolean {
+    if (!buf || buf.length < 100) return false;
+    const sample = buf.subarray(0, 50).toString('utf-8').toLowerCase();
+    if (sample.includes('<!doctype') || sample.includes('<html')) return false;
+    return true;
+  }
+
+  public async fetchImageBufferWithRetry(event: InboundWhatsAppEvent): Promise<Buffer | null> {
+    if (event.base64) {
+      try {
+        const cleanB64 = event.base64.replace(/^data:image\/[a-z0-9]+;base64,/i, '').trim();
+        if (cleanB64.length > 50) {
+          const buf = Buffer.from(cleanB64, 'base64');
+          if (this.isValidImageBuffer(buf)) return buf;
+        }
+      } catch (b64Err) {
+        console.warn('[Image base64 decode warning]', b64Err);
+      }
+    }
+
+    const evoUrl = process.env.EVOLUTION_API_URL ? process.env.EVOLUTION_API_URL.replace(/\/+$/, '') : '';
+    const evoKey = process.env.EVOLUTION_API_KEY || '';
+    const instanceName = event.providerIdentity || 'ws_org_27f3fcc3402b';
+
+    if (evoUrl && evoKey && event.externalMessageId) {
+      const rawDigits = event.senderPhone ? event.senderPhone.replace(/[^\d]/g, '') : '';
+      const targetRemoteJid = event.messageKey?.remoteJid || (rawDigits ? `${rawDigits}@s.whatsapp.net` : '');
+
+      const fullMessageKey = {
+        id: event.messageKey?.id || event.externalMessageId,
+        remoteJid: targetRemoteJid,
+        fromMe: event.messageKey?.fromMe !== undefined ? event.messageKey.fromMe : event.fromMe,
+        ...(event.messageKey || {}),
+      };
+
+      const endpointsToTry = [
+        `/chat/getBase64FromMediaMessage/${instanceName}`,
+        `/message/downloadMedia/${instanceName}`,
+      ];
+
+      for (const ep of endpointsToTry) {
+        try {
+          const bodyPayload = {
+            message: {
+              key: fullMessageKey,
+            },
+            convertToMp4: false,
+          };
+
+          const res = await fetch(`${evoUrl}${ep}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': evoKey,
+            },
+            body: JSON.stringify(bodyPayload),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const b64 = data.base64 || data.mediaUrl || data.data?.base64;
+            if (typeof b64 === 'string' && b64.length > 50) {
+              const cleanB64 = b64.replace(/^data:image\/[a-z0-9]+;base64,/i, '').trim();
+              const buf = Buffer.from(cleanB64, 'base64');
+              if (this.isValidImageBuffer(buf)) return buf;
+            }
+          }
+        } catch (evoFetchErr) {
+          console.warn(`[Evolution Image API Fetch Warning ${ep}]`, evoFetchErr);
+        }
+      }
+    }
+
+    if (event.mediaUrl) {
+      const headers: Record<string, string> = {};
+      const isEvolutionHost = evoUrl && event.mediaUrl.toLowerCase().includes(evoUrl.toLowerCase());
+      if (isEvolutionHost && evoKey) {
+        headers['apikey'] = evoKey;
+      }
+
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await fetch(event.mediaUrl, { headers });
+          if (res.ok) {
+            const arrayBuf = await res.arrayBuffer();
+            const buf = Buffer.from(arrayBuf);
+            if (this.isValidImageBuffer(buf)) return buf;
+          }
+        } catch (netErr) {
+          console.warn(`[Image fetch retry ${attempt}/${maxRetries}]`, netErr);
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, attempt * 300));
+        }
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Transcribes an audio buffer server-side strictly via OpenAI Whisper (or Groq Whisper).
    */
@@ -791,6 +900,22 @@ export class WhatsAppApplicationService {
         }
       }
 
+      let imageInput: { base64: string; mimeType: string } | null = null;
+      let imageAccessFailed = false;
+
+      if (event.messageType === 'IMAGE') {
+        const imageBuf = await this.fetchImageBufferWithRetry(event);
+        if (imageBuf) {
+          imageInput = {
+            base64: imageBuf.toString('base64'),
+            mimeType: this.detectImageMimeType(imageBuf),
+          };
+        } else {
+          imageAccessFailed = true;
+          console.warn(`[WhatsAppApplicationService] IMAGE media fetch/decryption failed for externalMessageId=${event.externalMessageId}`);
+        }
+      }
+
       const startTimeMs = Date.now();
       const aiResult = await salesAgentService.generateResponse(
         mockCustomer,
@@ -799,7 +924,9 @@ export class WhatsAppApplicationService {
         targetOrgId,
         aiConfig,
         execOptions,
-        activeAttribution
+        activeAttribution,
+        imageInput,
+        imageAccessFailed
       );
       const latencyMs = Date.now() - startTimeMs;
 
