@@ -46,7 +46,7 @@ describe('Evolution WhatsApp Real QR & Instance Management Test Suite', () => {
     assert.ok(event);
     assert.strictEqual(event?.provider, 'EVOLUTION');
     assert.strictEqual(event?.providerIdentity, 'ws_org_a0eebc999c0b');
-    assert.strictEqual(event?.senderPhone, '22670000001');
+    assert.strictEqual(event?.senderPhone, '+22670000001');
     assert.strictEqual(event?.senderName, 'Moussa Ouattara');
     assert.strictEqual(event?.textBody, 'Bonjour WILLShop');
     assert.strictEqual(event?.fromMe, false);

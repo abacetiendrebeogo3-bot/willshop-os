@@ -119,45 +119,68 @@ export class WhatsAppApplicationService {
       }
     }
 
-    // 3. Lookup or Create Customer
+    // 3. Canonical Phone & Customer Resolution
+    const normalizedPhone = event.senderPhone.startsWith('+')
+      ? event.senderPhone
+      : `+${event.senderPhone.replace(/[^\d]/g, '')}`;
+    const rawDigits = event.senderPhone.replace(/[^\d]/g, '');
+
     let customerId = '';
-    const { data: existingCust } = await this.supabase
+    const { data: existingCusts } = await this.supabase
       .from('customers')
-      .select('id')
+      .select('id, phone')
       .eq('organization_id', targetOrgId)
-      .eq('phone', event.senderPhone)
-      .maybeSingle();
+      .or(`phone.eq.${normalizedPhone},phone.eq.+${rawDigits},phone.eq.${rawDigits}`)
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    const existingCust = existingCusts?.[0];
 
     if (existingCust) {
       customerId = existingCust.id;
     } else {
-      const { data: newCust } = await this.supabase
-        .from('customers')
-        .insert({
-          organization_id: targetOrgId,
-          first_name: event.senderName || `Client ${event.senderPhone.slice(-4)}`,
-          last_name: 'WhatsApp',
-          phone: event.senderPhone,
-          status: 'ACTIVE',
-        })
-        .select()
-        .single();
+      try {
+        const { data: newCust } = await this.supabase
+          .from('customers')
+          .insert({
+            organization_id: targetOrgId,
+            first_name: event.senderName || `Client ${normalizedPhone.slice(-4)}`,
+            last_name: 'WhatsApp',
+            phone: normalizedPhone,
+            whatsapp_phone: normalizedPhone,
+            status: 'ACTIVE',
+          })
+          .select()
+          .single();
 
-      if (newCust) customerId = newCust.id;
+        if (newCust) customerId = newCust.id;
+      } catch (custErr: any) {
+        const { data: retryCust } = await this.supabase
+          .from('customers')
+          .select('id')
+          .eq('organization_id', targetOrgId)
+          .or(`phone.eq.${normalizedPhone},phone.eq.+${rawDigits},phone.eq.${rawDigits}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (retryCust) customerId = retryCust.id;
+      }
     }
 
-    // 4. Lookup or Create Conversation
+    // 4. Lookup or Create Single Active Conversation per Customer
     let conversationId = '';
     let conversationMode: 'AI_ACTIVE' | 'HUMAN_ACTIVE' | 'ESCALATED' | 'PAUSED' = 'AI_ACTIVE';
 
-    const { data: existingConv } = await this.supabase
+    const { data: existingConvs } = await this.supabase
       .from('conversations')
-      .select('id, conversation_mode, assigned_agent')
+      .select('id, conversation_mode, assigned_agent, status')
       .eq('organization_id', targetOrgId)
       .eq('customer_id', customerId)
+      .neq('status', 'ARCHIVED')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+
+    const existingConv = existingConvs?.[0];
 
     if (existingConv) {
       conversationId = existingConv.id;
@@ -169,24 +192,40 @@ export class WhatsAppApplicationService {
         .eq('id', conversationId);
     } else {
       const initialMode = event.fromMe ? 'HUMAN_ACTIVE' : 'AI_ACTIVE';
-      const { data: newConv } = await this.supabase
-        .from('conversations')
-        .insert({
-          organization_id: targetOrgId,
-          customer_id: customerId || null,
-          whatsapp_number_id: whatsappNumberId,
-          channel: 'WHATSAPP',
-          status: 'OPEN',
-          conversation_mode: initialMode,
-          assigned_agent: 'SALES_AI',
-          last_message_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
+      try {
+        const { data: newConv } = await this.supabase
+          .from('conversations')
+          .insert({
+            organization_id: targetOrgId,
+            customer_id: customerId || null,
+            whatsapp_number_id: whatsappNumberId,
+            channel: 'WHATSAPP',
+            status: 'OPEN',
+            conversation_mode: initialMode,
+            assigned_agent: 'SALES_AI',
+            last_message_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
 
-      if (newConv) {
-        conversationId = newConv.id;
-        conversationMode = initialMode;
+        if (newConv) {
+          conversationId = newConv.id;
+          conversationMode = initialMode;
+        }
+      } catch (convErr: any) {
+        const { data: retryConv } = await this.supabase
+          .from('conversations')
+          .select('id, conversation_mode')
+          .eq('organization_id', targetOrgId)
+          .eq('customer_id', customerId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (retryConv) {
+          conversationId = retryConv.id;
+          conversationMode = (retryConv.conversation_mode as any) || 'AI_ACTIVE';
+        }
       }
     }
 

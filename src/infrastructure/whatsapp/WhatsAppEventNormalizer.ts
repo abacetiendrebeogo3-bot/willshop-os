@@ -9,6 +9,20 @@ import {
   WhatsAppMessageType,
 } from '../../domain/entities/WhatsAppEventEntities';
 
+/**
+ * Normalizes any raw phone number into a canonical E.164 format (+22672019524).
+ */
+export function normalizeCanonicalPhone(rawPhone: string): string {
+  if (!rawPhone) return '';
+  const cleaned = rawPhone.replace(/[^\d+]/g, '');
+  if (!cleaned) return '';
+
+  if (cleaned.startsWith('+')) return cleaned;
+  if (cleaned.startsWith('00')) return `+${cleaned.substring(2)}`;
+  if (cleaned.length === 8) return `+226${cleaned}`;
+  return `+${cleaned}`;
+}
+
 export class WhatsAppEventNormalizer {
   /**
    * Normalizes an incoming raw payload from Meta or Evolution.
@@ -40,12 +54,13 @@ export class WhatsAppEventNormalizer {
     }
 
     const rawJidUser = (remoteJid || '').split('@')[0].split(':')[0];
-    let senderPhone = rawJidUser.replace(/[^\d+]/g, '');
-    if (!senderPhone && msgData.from) {
-      senderPhone = String(msgData.from).replace(/[^\d+]/g, '');
+    let rawPhone = rawJidUser.replace(/[^\d+]/g, '');
+    if (!rawPhone && msgData.from) {
+      rawPhone = String(msgData.from).replace(/[^\d+]/g, '');
     }
 
-    const senderName = msgData.pushName || payload.pushName || (senderPhone ? `+${senderPhone}` : 'Client WhatsApp');
+    const senderPhone = normalizeCanonicalPhone(rawPhone);
+    const senderName = msgData.pushName || payload.pushName || (senderPhone ? senderPhone : 'Client WhatsApp');
     const externalMessageId = keyObj.id || msgData.id || `EVO-${Date.now()}`;
     const fromMe = !!keyObj.fromMe || !!msgData.fromMe;
     const providerIdentity = String(payload.instance || payload.sender || payload.instanceName || 'willshop_pilot').trim();
@@ -106,7 +121,8 @@ export class WhatsAppEventNormalizer {
       return null;
     }
 
-    const senderPhone = (messageObject.from || '').replace(/[^\d+]/g, '');
+    const rawPhone = (messageObject.from || '').replace(/[^\d+]/g, '');
+    const senderPhone = normalizeCanonicalPhone(rawPhone);
     const senderName = value?.contacts?.[0]?.profile?.name || senderPhone;
     const externalMessageId = messageObject.id || `wamid.${Date.now()}`;
     const providerIdentity = String(value?.metadata?.phone_number_id || 'default_id').trim();
