@@ -350,7 +350,9 @@ ${imageSendingRule}
    - Si le produit a confidence: LOW, pose une question ouverte bienveillante.
    - Si la provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue ! Vous recherchez quel produit ?").
 9. GESTION STRICTE DES QUARTIERS ET LIVRAISON :
-   - Dès qu'un quartier de livraison est fourni par le client (ex: "Somgandé") OU vérifié avec succès (available: true via l'outil check_delivery_zone), NE REDEMANDE PLUS JAMAIS "Vous êtes dans quel quartier ?" au client. Poursuis directement la confirmation de la commande.`;
+   - Dès qu'un quartier de livraison est fourni par le client (ex: "Somgandé", "Benego", "Tampouy") OU vérifié avec succès (available: true via l'outil check_delivery_zone), NE REDEMANDE PLUS JAMAIS "Vous êtes dans quel quartier ?" au client. Poursuis directement la confirmation de la commande.
+10. EXÉCUTION SYSTÉMATIQUE DE L'OUTIL DE LIVRAISON :
+   - Dès que le client nomme une localisation ou un quartier (ex: "Somgandé", "Benego", "Je suis à..."), appelle IMMÉDIATEMENT l'outil check_delivery_zone avec ce nom de quartier.`;
 
     // Construct structured message history for Anthropic API
     const structuredMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

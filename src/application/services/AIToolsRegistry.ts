@@ -62,14 +62,13 @@ export class AIToolsRegistry {
       },
       {
         name: 'check_delivery_zone',
-        description: 'Vérifie les frais de livraison et la disponibilité pour une ville ou un quartier.',
+        description: 'Vérifie les frais et la disponibilité de livraison pour un quartier ou une ville (ex: Somgandé, Kossodo, Tampouy, Benego, Ouagadougou).',
         input_schema: {
           type: 'object',
           properties: {
-            city: { type: 'string', description: 'Ville du client (ex: Ouagadougou, Bobo-Dioulasso)' },
-            district: { type: 'string', description: 'Quartier du client' },
+            district: { type: 'string', description: 'Nom du quartier ou de la zone du client (ex: Somgandé, Benego)' },
+            city: { type: 'string', description: 'Ville du client (ex: Ouagadougou)' },
           },
-          required: ['city'],
         },
       },
       {
