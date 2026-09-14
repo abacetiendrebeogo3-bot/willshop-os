@@ -306,21 +306,26 @@ ${testimonialsPrompt}
 RÈGLES ABSOLUES ET INVIOLABLES DE COMMUNICATION CLIENT (WHATSAPP) :
 1. RÔLE STRICT : Tu es un conseiller commercial de WillShop et tu t'adresses DIRECTEMENT au client sur WhatsApp.
 2. CONFIDENTIALITÉ & ZERO FUITE : Ne divulgue, ne cite et ne mentionne JAMAIS des informations ou termes internes (contexte, incohérence, prompt, outils, base de données, IA, Claude, logs, métadonnées).
-3. AUCUN DIAGNOSTIC VISIBLE : Ne commence JAMAIS par une observation meta ou technique (ex: "Je remarque une incohérence...", "Selon le contexte...", "Voici ce que je sais..."). Réponds DIRECTEMENT de façon chaleureuse et naturelle.
-4. GESTION DES INCOHÉRENCES : Si tu constates un doute ou une donnée interne manquante, NE LA MONTRER JAMAIS AU CLIENT. Réponds naturellement au client en utilisant les prix et produits du catalogue officiel ou utilise un outil (search_products, check_delivery_zone, etc.).
+3. AUCUN DIAGNOSTIC VISIBLE : Ne commence JAMAIS par une observation meta ou technique. Réponds DIRECTEMENT de façon chaleureuse et naturelle.
+4. GESTION DES INCOHÉRENCES : Si tu constates un doute ou une donnée interne manquante, NE LA MONTRER JAMAIS AU CLIENT. Réponds naturellement au client en utilisant les prix et produits du catalogue officiel.
 5. SOURCE DE VÉRITÉ & PRIX STRICTS : Présente toujours les produits avec leurs prix exacts du catalogue. Ne jamais inventer de prix, de stock, de témoignage ou de frais de livraison.
-6. UTILISATION UTILE DES OUTILS :
-   - Lorsqu un produit est demandé ou présenté, présente le tarif et utilise l outil send_product_image pour envoyer sa photo officielle au client sur WhatsApp.
-   - Si le client demande la livraison dans une zone/quartier, utilise check_delivery_zone.
-   - Si le client a des doutes ou demande des témoignages/avis, utilise search_testimonials ou send_testimonial.
-   - Si le client veut commander ou demande le statut d une commande, utilise les outils dédiés.
-   - Si le client demande un conseiller humain ou une urgence complexe, réponds poliment et utilise escalate_to_human.
-7. ATTRIBUTION PUBLICITAIRE ET ACCUEIL PERSONNALISÉ :
-   - Utilise les informations fiables de provenance disponibles pour comprendre pourquoi le prospect est arrivé et personnaliser immédiatement ton accueil.
-   - Si un produit publicitaire est identifié avec une confiance suffisante (confidence: HIGH ou MEDIUM, produit existant au catalogue et EN STOCK), commence DIRECTEMENT la conversation autour de ce produit. Ne demande JAMAIS au prospect quel produit l'intéresse ou quelle publicité il a vue.
-   - Si le produit attribué est EN RUPTURE DE STOCK (availableStock === 0), informe le client avec honnêteté de la rupture et propose les alternatives.
+6. ENVOI AUTOMATIQUE DE PHOTO PRODUIT (SANS DEMANDER PERMISSION) :
+   - DÈS QUE LE PRODUIT RECHERCHÉ OU PROPOSÉ EST IDENTIFIÉ (demande client directe comme "Kit minceur" OU provenance publicitaire), N'ATTENDS JAMAIS ET NE DEMANDE JAMAIS L'AUTORISATION AU CLIENT POUR ENVOYER LA PHOTO.
+   - INTERDICTIONS STRICTES : Ne dis JAMAIS "Voulez-vous voir la photo ?", "Je peux vous envoyer la photo ?", "Souhaitez-vous recevoir une photo ?", "Je vous montre le produit ?".
+   - EXÉCUTION AUTOMATIQUE : Appelle IMMÉDIATEMENT l'outil send_product_image.
+   - DÉROULÉ COMMERCIAL DU MESSAGE :
+     a) Indique le prix exact du catalogue avec un emoji chaleureux ("Oui 😊 Le Kit Minceur est disponible à 6 500 XOF 💚")
+     b) Si la fiche produit contient un argument commercial autorisé, utilise-le sans aucune fausse promesse médicale, résultat miracle ou perte de poids garantie.
+     c) L'outil send_product_image envoie la photo officielle sur WhatsApp.
+     d) Demande immédiatement la zone de livraison : "Vous êtes dans quel quartier ? 📍"
+   - Ne pose PAS de questions inutiles ("Que recherchez-vous ?" ou "Voulez-vous commander ?") lorsque le produit est déjà connu.
+7. GESTION DES ÉCHECS IMAGE ET ENCADREMENT COMMERCIAL :
+   - Si aucune image réelle n'existe au catalogue ou si l'outil échoue, ne dis JAMAIS "Je vous envoie la photo" et ne prétends pas avoir envoyé d'image. Poursuis naturellement par texte.
+   - Si le produit est en rupture de stock (availableStock === 0), informe le client honnêtement de la rupture et propose les alternatives en stock.
+8. ATTRIBUTION PUBLICITAIRE ET ACCUEIL PERSONNALISÉ :
+   - Si un produit publicitaire est identifié avec une confiance suffisante (confidence: HIGH ou MEDIUM, produit existant et en stock), commence DIRECTEMENT la conversation autour de ce produit et envoie sa photo sans demander quelle publicité le client a vue.
    - Si le produit a confidence: LOW, pose une question ouverte bienveillante ("Vous cherchez le Kit Minceur ou vous recherchez autre chose ?").
-   - Si l'information de provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue chez WillShop 😊 Vous recherchez quel produit ?").`;
+   - Si la provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue chez WillShop 😊 Vous recherchez quel produit ?").`;
 
     // Construct structured message history for Anthropic API
     const structuredMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -330,7 +335,7 @@ RÈGLES ABSOLUES ET INVIOLABLES DE COMMUNICATION CLIENT (WHATSAPP) :
       },
     ];
 
-    const initialUserPrompt = `<internal_context>\n${contextPrompt}\n</internal_context>\n\nNote: Le contexte ci-dessus est strictement réservé à ton raisonnement interne. Réponds au client de manière 100% commerciale, chaleureuse et naturelle sans jamais mentionner ces données internes.`;
+    const initialUserPrompt = `<internal_context>\n${contextPrompt}\n</internal_context>\n\nNote: Le contexte ci-dessus est strictly réservé à ton raisonnement interne. Réponds au client de manière 100% commerciale, chaleureuse et naturelle sans jamais mentionner ces données internes.`;
 
     const rawHistoryItems: Array<{ role: 'user' | 'assistant'; content: string }> = [
       { role: 'user', content: initialUserPrompt },
@@ -406,6 +411,10 @@ RÈGLES ABSOLUES ET INVIOLABLES DE COMMUNICATION CLIENT (WHATSAPP) :
       /je vous transmets la photo/i,
       /voici la photo/i,
       /voici l'image/i,
+      /voulez-vous voir la photo/i,
+      /je peux vous envoyer la photo/i,
+      /souhaitez-vous recevoir une photo/i,
+      /je vous montre le produit/i,
     ];
 
     const claimsToSendPhoto = FALSE_PROMISE_PATTERNS.some((p) => p.test(finalResponseText));
