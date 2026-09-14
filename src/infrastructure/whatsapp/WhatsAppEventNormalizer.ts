@@ -136,7 +136,11 @@ export class WhatsAppEventNormalizer {
       msgData.base64 ||
       msgContent?.base64 ||
       msgContent?.audioMessage?.base64 ||
-      msgContent?.pttMessage?.base64;
+      msgContent?.pttMessage?.base64 ||
+      payload.message?.base64 ||
+      payload.data?.message?.base64 ||
+      msgData.audioMessage?.base64 ||
+      msgData.pttMessage?.base64;
 
     if (!senderPhone && !textBody && !base64) {
       return null;
