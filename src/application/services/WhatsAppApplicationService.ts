@@ -23,6 +23,26 @@ export class WhatsAppApplicationService {
   ) {}
 
   /**
+   * Helper to check if buffer has valid audio header magic bytes.
+   */
+  private isValidAudioBuffer(buf: Buffer): boolean {
+    if (!buf || buf.length < 30) return false;
+    // Check OGG header ("OggS" = 0x4f 0x67 0x67 0x53)
+    if (buf[0] === 0x4f && buf[1] === 0x67 && buf[2] === 0x67 && buf[3] === 0x53) return true;
+    // Check MP3 ID3 header ("ID3")
+    if (buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) return true;
+    // Check MP3 sync word (0xFF 0xFB, 0xFF 0xF3, 0xFF 0xF2)
+    if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return true;
+    // Check WAV ("RIFF")
+    if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46) return true;
+    // Check AAC / M4A ("ftyp")
+    if (buf.length > 12 && buf.toString('ascii', 4, 8) === 'ftyp') return true;
+
+    // Reject raw encrypted WhatsApp .enc binary buffers or HTML error responses
+    return false;
+  }
+
+  /**
    * Downloads or decodes the audio buffer from base64, Evolution API base64 endpoint, or mediaUrl with retries.
    */
   private async fetchAudioBufferWithRetry(event: InboundWhatsAppEvent): Promise<Buffer | null> {
@@ -32,19 +52,29 @@ export class WhatsAppApplicationService {
         const cleanB64 = event.base64.replace(/^data:audio\/[a-z0-9]+;base64,/i, '').trim();
         if (cleanB64.length > 20) {
           const buf = Buffer.from(cleanB64, 'base64');
-          if (buf.length > 50) return buf;
+          if (this.isValidAudioBuffer(buf)) return buf;
         }
       } catch (b64Err) {
         console.warn('[Audio base64 decode warning]', b64Err);
       }
     }
 
-    // 2. Fetch decrypted base64 via Evolution API endpoint if configured
+    // 2. Fetch decrypted base64 via Evolution API endpoint using full original key
     const evoUrl = process.env.EVOLUTION_API_URL ? process.env.EVOLUTION_API_URL.replace(/\/+$/, '') : '';
     const evoKey = process.env.EVOLUTION_API_KEY || '';
     const instanceName = event.providerIdentity || 'ws_org_27f3fcc3402b';
 
     if (evoUrl && evoKey && event.externalMessageId) {
+      const rawDigits = event.senderPhone ? event.senderPhone.replace(/[^\d]/g, '') : '';
+      const targetRemoteJid = event.messageKey?.remoteJid || (rawDigits ? `${rawDigits}@s.whatsapp.net` : '');
+
+      const fullMessageKey = {
+        id: event.messageKey?.id || event.externalMessageId,
+        remoteJid: targetRemoteJid,
+        fromMe: event.messageKey?.fromMe !== undefined ? event.messageKey.fromMe : event.fromMe,
+        ...(event.messageKey || {}),
+      };
+
       const endpointsToTry = [
         `/chat/getBase64FromMediaMessage/${instanceName}`,
         `/message/downloadMedia/${instanceName}`,
@@ -54,9 +84,7 @@ export class WhatsAppApplicationService {
         try {
           const bodyPayload = {
             message: {
-              key: {
-                id: event.externalMessageId,
-              },
+              key: fullMessageKey,
             },
             convertToMp4: false,
           };
@@ -76,7 +104,7 @@ export class WhatsAppApplicationService {
             if (typeof b64 === 'string' && b64.length > 50) {
               const cleanB64 = b64.replace(/^data:audio\/[a-z0-9]+;base64,/i, '').trim();
               const buf = Buffer.from(cleanB64, 'base64');
-              if (buf.length > 50) return buf;
+              if (this.isValidAudioBuffer(buf)) return buf;
             }
           }
         } catch (evoFetchErr) {
@@ -100,7 +128,7 @@ export class WhatsAppApplicationService {
           if (res.ok) {
             const arrayBuf = await res.arrayBuffer();
             const buf = Buffer.from(arrayBuf);
-            if (buf.length > 50) return buf;
+            if (this.isValidAudioBuffer(buf)) return buf;
           }
         } catch (netErr) {
           console.warn(`[Audio fetch retry ${attempt}/${maxRetries}]`, netErr);
@@ -115,119 +143,79 @@ export class WhatsAppApplicationService {
   }
 
   /**
-   * Transcribes an audio buffer server-side via Whisper API (OpenAI or Groq) or Anthropic with retries.
+   * Transcribes an audio buffer server-side strictly via OpenAI Whisper (or Groq Whisper).
    */
-  private async transcribeAudioBuffer(audioBuffer: Buffer, fileName: string): Promise<string | null> {
+  private async transcribeAudioBuffer(
+    audioBuffer: Buffer,
+    fileName: string
+  ): Promise<{ text: string | null; errorReason?: string }> {
     const openaiKey = process.env.OPENAI_API_KEY;
     const groqKey = process.env.GROQ_API_KEY;
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
-    // Prioritize OpenAI / Groq Whisper endpoints if keys are present
     const apiKey = openaiKey || groqKey;
 
-    if (apiKey) {
-      const endpoint = openaiKey
-        ? 'https://api.openai.com/v1/audio/transcriptions'
-        : 'https://api.groq.com/openai/v1/audio/transcriptions';
-      const model = openaiKey ? 'whisper-1' : 'whisper-large-v3';
-
-      const maxRetries = 3;
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          const formData = new FormData();
-          const uint8 = new Uint8Array(audioBuffer);
-          const blob = new Blob([uint8], { type: 'audio/ogg' });
-          formData.append('file', blob, fileName);
-          formData.append('model', model);
-          formData.append('language', 'fr');
-
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-            },
-            body: formData,
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            return data.text ? data.text.trim() : null;
-          }
-          console.warn(`[Whisper API Error attempt ${attempt}] Status ${res.status}`);
-        } catch (err) {
-          console.warn(`[Transcription Exception attempt ${attempt}]`, err);
-        }
-
-        if (attempt < maxRetries) {
-          await new Promise((r) => setTimeout(r, attempt * 300));
-        }
-      }
+    if (!apiKey) {
+      console.warn('[ASR Transcription Error] Neither OPENAI_API_KEY nor GROQ_API_KEY is configured in environment.');
+      return { text: null, errorReason: 'MISSING_OPENAI_API_KEY' };
     }
 
-    // Anthropic Fallback Transcription if Anthropic key is available
-    if (anthropicKey) {
+    const endpoint = openaiKey
+      ? 'https://api.openai.com/v1/audio/transcriptions'
+      : 'https://api.groq.com/openai/v1/audio/transcriptions';
+    const model = openaiKey ? 'whisper-1' : 'whisper-large-v3';
+
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const base64Audio = audioBuffer.toString('base64');
-        const anthropicModel = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+        const formData = new FormData();
+        const uint8 = new Uint8Array(audioBuffer);
+        const blob = new Blob([uint8], { type: 'audio/ogg' });
+        formData.append('file', blob, fileName);
+        formData.append('model', model);
+        formData.append('language', 'fr');
 
-        const payload = {
-          model: anthropicModel,
-          max_tokens: 300,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: 'Transcris fidèlement ce message vocal client WhatsApp en français. Ne réponds que par le texte transcrit exact, sans aucun commentaire ni introduction.',
-                },
-                {
-                  type: 'document',
-                  source: {
-                    type: 'base64',
-                    media_type: 'audio/ogg',
-                    data: base64Audio,
-                  },
-                },
-              ],
-            },
-          ],
-        };
-
-        const res = await fetch('https://api.anthropic.com/v1/messages', {
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            'x-api-key': anthropicKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
           },
-          body: JSON.stringify(payload),
+          body: formData,
         });
 
         if (res.ok) {
           const data = await res.json();
-          const text = data.content?.[0]?.text;
-          if (text && text.trim()) return text.trim();
+          return { text: data.text ? data.text.trim() : null };
         }
-      } catch (anthropicErr) {
-        console.warn('[Anthropic Audio Transcription Fallback Exception]', anthropicErr);
+        console.warn(`[Whisper API Error attempt ${attempt}] Status ${res.status}`);
+      } catch (err) {
+        console.warn(`[Transcription Exception attempt ${attempt}]`, err);
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, attempt * 300));
       }
     }
 
-    console.warn('[Transcription Failed] No valid API key (OPENAI_API_KEY, GROQ_API_KEY, or ANTHROPIC_API_KEY) or all transcription attempts failed.');
-    return null;
+    return { text: null, errorReason: 'WHISPER_API_HTTP_ERROR' };
   }
 
   /**
    * Validates if a transcription text is meaningful, exploitable, and supported.
    */
-  private validateTranscriptionExploitability(text: string | null): {
+  private validateTranscriptionExploitability(
+    text: string | null,
+    technicalError?: string
+  ): {
     isExploitable: boolean;
-    status: 'COMPLETED' | 'INCOMPREHENSIBLE' | 'UNSUPPORTED_LANGUAGE' | 'FAILED';
+    status: 'COMPLETED' | 'INCOMPREHENSIBLE' | 'UNSUPPORTED_LANGUAGE' | 'TRANSCRIPTION_TECHNICAL_ERROR';
     cleanedText: string;
   } {
+    if (technicalError) {
+      return { isExploitable: false, status: 'TRANSCRIPTION_TECHNICAL_ERROR', cleanedText: '' };
+    }
+
     if (!text || typeof text !== 'string') {
-      return { isExploitable: false, status: 'FAILED', cleanedText: '' };
+      return { isExploitable: false, status: 'TRANSCRIPTION_TECHNICAL_ERROR', cleanedText: '' };
     }
 
     const trimmed = text.trim();
@@ -480,6 +468,7 @@ export class WhatsAppApplicationService {
     if (event.messageType === 'AUDIO') {
       const audioBuffer = await this.fetchAudioBufferWithRetry(event);
       let transcribedText: string | null = null;
+      let technicalError: string | undefined;
       let storagePublicUrl: string | null = event.mediaUrl || null;
 
       if (audioBuffer) {
@@ -502,10 +491,14 @@ export class WhatsAppApplicationService {
           console.warn('[Storage upload warning for audio]', stErr);
         }
 
-        transcribedText = await this.transcribeAudioBuffer(audioBuffer, fileName);
+        const transRes = await this.transcribeAudioBuffer(audioBuffer, fileName);
+        transcribedText = transRes.text;
+        if (transRes.errorReason) technicalError = transRes.errorReason;
+      } else {
+        technicalError = 'MEDIA_DOWNLOAD_FAILED';
       }
 
-      const evalResult = this.validateTranscriptionExploitability(transcribedText);
+      const evalResult = this.validateTranscriptionExploitability(transcribedText, technicalError);
 
       if (!evalResult.isExploitable) {
         // RÈGLE ABSOLUE — VOCAL NON COMPRIS = SILENCE

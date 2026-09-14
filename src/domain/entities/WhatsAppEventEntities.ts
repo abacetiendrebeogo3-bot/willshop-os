@@ -19,6 +19,7 @@ export interface InboundWhatsAppEvent {
   mediaUrl?: string;
   mediaMimeType?: string;
   base64?: string;
+  messageKey?: Record<string, any>;
   fromMe: boolean; // True if sent from commercial's WhatsApp app
   timestamp: Date;
   rawPayload: Record<string, any>;

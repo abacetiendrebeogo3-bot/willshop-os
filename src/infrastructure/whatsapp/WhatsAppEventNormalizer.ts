@@ -187,6 +187,11 @@ export class WhatsAppEventNormalizer {
       textBody,
       mediaUrl,
       base64,
+      messageKey: keyObj && typeof keyObj === 'object' && Object.keys(keyObj).length > 0 ? keyObj : {
+        id: externalMessageId,
+        remoteJid: remoteJid || (senderPhone ? `${senderPhone.replace(/[^\d]/g, '')}@s.whatsapp.net` : ''),
+        fromMe,
+      },
       fromMe,
       timestamp: new Date(msgData.messageTimestamp ? msgData.messageTimestamp * 1000 : Date.now()),
       rawPayload: payload,

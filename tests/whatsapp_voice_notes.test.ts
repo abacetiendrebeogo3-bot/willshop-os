@@ -181,7 +181,7 @@ describe('WhatsApp Voice Notes & Silence Rule Automated Test Suite', () => {
     const service = new WhatsAppApplicationService(mockSupabase as any, mockProvider);
 
     // Mock transcribeAudioBuffer to return valid French text
-    (service as any).transcribeAudioBuffer = async () => 'Bonjour, je suis intéressé par le kit minceur.';
+    (service as any).transcribeAudioBuffer = async () => ({ text: 'Bonjour, je suis intéressé par le kit minceur.' });
     (service as any).fetchAudioBufferWithRetry = async () => Buffer.from('fake-audio-bytes');
 
     const result = await service.processInboundEvent({
@@ -215,7 +215,7 @@ describe('WhatsApp Voice Notes & Silence Rule Automated Test Suite', () => {
     const service = new WhatsAppApplicationService(mockSupabase as any, mockProvider);
 
     const transcribed = 'Bonjour je veux le kit minceur, je suis à Tampouy.';
-    (service as any).transcribeAudioBuffer = async () => transcribed;
+    (service as any).transcribeAudioBuffer = async () => ({ text: transcribed });
     (service as any).fetchAudioBufferWithRetry = async () => Buffer.from('fake-audio-bytes');
 
     const result = await service.processInboundEvent({
@@ -280,7 +280,7 @@ describe('WhatsApp Voice Notes & Silence Rule Automated Test Suite', () => {
     const mockProvider = createMockProvider();
     const service = new WhatsAppApplicationService(mockSupabase as any, mockProvider);
 
-    (service as any).transcribeAudioBuffer = async () => 'Bonjour, je veux parler à un conseiller commercial SVP.';
+    (service as any).transcribeAudioBuffer = async () => ({ text: 'Bonjour, je veux parler à un conseiller commercial SVP.' });
     (service as any).fetchAudioBufferWithRetry = async () => Buffer.from('fake-audio-bytes');
 
     const result = await service.processInboundEvent({
@@ -309,7 +309,7 @@ describe('WhatsApp Voice Notes & Silence Rule Automated Test Suite', () => {
     const mockProvider = createMockProvider();
     const service = new WhatsAppApplicationService(mockSupabase as any, mockProvider);
 
-    (service as any).transcribeAudioBuffer = async () => 'Bonjour je veux des infos.';
+    (service as any).transcribeAudioBuffer = async () => ({ text: 'Bonjour je veux des infos.' });
     (service as any).fetchAudioBufferWithRetry = async () => Buffer.from('fake-audio-bytes');
 
     const payload = {
