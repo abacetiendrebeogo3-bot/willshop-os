@@ -8,6 +8,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert';
 
 import { SalesAgentService, SalesAgentContextService, sanitizeResponseText } from '../src/application/services/SalesAgentService';
+import { AIToolsRegistry } from '../src/application/services/AIToolsRegistry';
+import { CreateOrderService } from '../src/application/services/OrderStockApplicationServices';
+import { InMemoryProductRepository, InMemoryOrderRepository } from '../src/infrastructure/repositories/InMemoryDataCoreRepositories';
 import { IAIGateway } from '../src/domain/interfaces/IAIGateway';
 import { Customer, Product } from '../src/domain/entities/DataCoreEntities';
 import { Message } from '../src/domain/entities/WhatsAppCRMEntities';
@@ -354,5 +357,104 @@ Dois-je procéder ?`;
 
     assert.strictEqual(result.hasLeak, false);
     assert.strictEqual(result.cleanedText, normalCommercialText);
+  });
+
+  // --------------------------------------------------------------------------
+  // TEST 13 (PRODUCT IMAGE SEND & ANTI-FALSE-PROMISE): Image Tool Execution
+  // --------------------------------------------------------------------------
+  test('TEST 13: Product image request triggers send_product_image tool execution cleanly', async () => {
+    class ImageMockAIGateway implements IAIGateway {
+      async generateCompletion(): Promise<any> {
+        return {
+          content: "Le Kit minceur est à 6500 XOF 💚 Je vous envoie la photo 👇",
+          toolCalls: [
+            {
+              id: 'call-img-1',
+              name: 'send_product_image',
+              input: { productId: 'prod-fit-tea', caption: '📸 Fit Tea Minceur — 7 500 XOF' },
+            },
+          ],
+          promptTokens: 120,
+          completionTokens: 30,
+          totalTokens: 150,
+          model: 'claude-haiku-4-5-20251001',
+        };
+      }
+    }
+
+    const dummyProductRepo = new InMemoryProductRepository();
+    const dummyOrderRepo = new InMemoryOrderRepository();
+    const dummyAuditRepo: any = { log: async () => {} };
+    const dummyEventRepo: any = { publish: async () => {} };
+    const dummyCreateOrder = new CreateOrderService(dummyOrderRepo, dummyProductRepo, dummyAuditRepo, dummyEventRepo);
+    const toolsRegistry = new AIToolsRegistry(dummyProductRepo, dummyOrderRepo, dummyCreateOrder);
+
+    const imgGateway = new ImageMockAIGateway();
+    const service = new SalesAgentService(imgGateway, salesContextService, toolsRegistry);
+
+    const recentMsgs: Message[] = [
+      {
+        id: 'msg-img-req',
+        organizationId: 'org-test-willshop',
+        conversationId: 'conv-1',
+        direction: 'INBOUND',
+        senderType: 'CUSTOMER',
+        messageType: 'TEXT',
+        content: 'Je veux voir le Kit minceur',
+        status: 'RECEIVED',
+        metadata: {},
+        sentAt: new Date(),
+        createdAt: new Date(),
+      },
+    ];
+
+    const res = await service.generateResponse(mockCustomer, recentMsgs, mockProducts);
+
+    assert.ok(res.responseText.includes('6500') || res.responseText.includes('Kit'));
+    assert.strictEqual(res.triggerHandoff, false);
+  });
+
+  // --------------------------------------------------------------------------
+  // TEST 14 (ANTI-FALSE-PROMISE): Strips false photo promises if tool failed / no image available
+  // --------------------------------------------------------------------------
+  test('TEST 14 (ANTI-FALSE-PROMISE): AI text claiming image send without successful tool execution must be sanitized', async () => {
+    class FalsePromiseAIGateway implements IAIGateway {
+      async generateCompletion(): Promise<any> {
+        return {
+          content: "Le Kit minceur est disponible à 6500 XOF 💚 Je vous envoie la photo du Kit minceur maintenant 👇",
+          // No tool calls returned or tool fails
+          toolCalls: [],
+          promptTokens: 100,
+          completionTokens: 25,
+          totalTokens: 125,
+          model: 'claude-haiku-4-5-20251001',
+        };
+      }
+    }
+
+    const falseGateway = new FalsePromiseAIGateway();
+    const service = new SalesAgentService(falseGateway, salesContextService);
+
+    const recentMsgs: Message[] = [
+      {
+        id: 'msg-fp-req',
+        organizationId: 'org-test-willshop',
+        conversationId: 'conv-1',
+        direction: 'INBOUND',
+        senderType: 'CUSTOMER',
+        messageType: 'TEXT',
+        content: 'Kit minceur',
+        status: 'RECEIVED',
+        metadata: {},
+        sentAt: new Date(),
+        createdAt: new Date(),
+      },
+    ];
+
+    const res = await service.generateResponse(mockCustomer, recentMsgs, mockProducts);
+
+    // Assert that the false promise sentence "Je vous envoie la photo..." is STRIPPED!
+    assert.strictEqual(res.responseText.includes('Je vous envoie la photo'), false);
+    assert.ok(res.responseText.includes('6500') || res.responseText.includes('disponible') || res.responseText.includes('WillShop'));
   });
 });

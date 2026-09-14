@@ -343,6 +343,8 @@ RÈGLES ABSOLUES ET INVIOLABLES DE COMMUNICATION CLIENT (WHATSAPP) :
     });
 
     let triggerHandoff = false;
+    let photoToolAttempted = false;
+    let photoToolSuccess = false;
 
     // Handle tool execution if LLM requested a tool call
     if (result.toolCalls && result.toolCalls.length > 0 && this.toolsRegistry && organizationId) {
@@ -351,12 +353,50 @@ RÈGLES ABSOLUES ET INVIOLABLES DE COMMUNICATION CLIENT (WHATSAPP) :
         if (execRes.triggerHandoff) {
           triggerHandoff = true;
         }
+
+        if (toolCall.name === 'send_product_image' || toolCall.name === 'send_product_visual') {
+          photoToolAttempted = true;
+          photoToolSuccess = Boolean(
+            execRes.result &&
+            execRes.result.success !== false &&
+            !execRes.result.error_code &&
+            (execRes.result.imageUrl || execRes.result.visualUrl || execRes.result.sentToWhatsApp || execRes.result.productId)
+          );
+        }
       }
     }
 
     const rawResponse = result.content || "Merci pour votre message ! Un conseiller est à votre disposition.";
     let sanitized = sanitizeResponseText(rawResponse);
     let finalResponseText = sanitized.cleanedText;
+
+    // ANTI-FALSE-PROMISE SANITIZER:
+    // If AI text promises an image ("Je vous envoie la photo..."), but image tool was NOT called or returned failure:
+    const FALSE_PROMISE_PATTERNS = [
+      /je vous envoie la photo/i,
+      /je vous envoie l'image/i,
+      /je vous envoie le visuel/i,
+      /je vous transmets la photo/i,
+      /voici la photo/i,
+      /voici l'image/i,
+    ];
+
+    const claimsToSendPhoto = FALSE_PROMISE_PATTERNS.some((p) => p.test(finalResponseText));
+
+    if (claimsToSendPhoto && (!photoToolAttempted || !photoToolSuccess)) {
+      console.warn('[SECURITY SANITIZER] False promise detected in AI text (claimed image send, but tool failed or was not called). Sanitizing text.');
+
+      let cleanedText = finalResponseText;
+      for (const pattern of FALSE_PROMISE_PATTERNS) {
+        cleanedText = cleanedText.replace(new RegExp(pattern.source + '.*', 'gi'), '').trim();
+      }
+
+      if (cleanedText.length > 10) {
+        finalResponseText = cleanedText;
+      } else {
+        finalResponseText = "Ce produit est disponible au catalogue WillShop 💚 Je n'ai pas de photo disponible pour le moment, mais je peux vous donner toutes les caractéristiques !";
+      }
+    }
 
     // Handle voluntary leak / diagnostic detection fallback flow
     if (sanitized.hasLeak) {

@@ -303,36 +303,84 @@ export class AIToolsRegistry {
           const destPhone = args.toPhoneNumber || execOptions?.destinationPhone;
 
           if (supabase) {
-            const { data: imgRows } = await supabase
-              .from('product_images')
-              .select('*')
-              .eq('product_id', args.productId)
-              .eq('organization_id', organizationId)
-              .order('is_primary', { ascending: false });
+            let prodRow: any = null;
+            const searchId = String(args.productId || '').trim();
 
-            const primaryImg = imgRows?.[0];
-            const { data: prodRow } = await supabase
-              .from('products')
-              .select('name, selling_price')
-              .eq('id', args.productId)
-              .single();
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(searchId);
+            if (isUuid) {
+              const { data } = await supabase
+                .from('products')
+                .select('id, name, selling_price, image_url')
+                .eq('id', searchId)
+                .eq('organization_id', organizationId)
+                .maybeSingle();
+              prodRow = data;
+            }
 
-            if (!primaryImg || !primaryImg.url) {
+            if (!prodRow) {
+              const { data: matchedProds } = await supabase
+                .from('products')
+                .select('id, name, selling_price, image_url')
+                .eq('organization_id', organizationId)
+                .ilike('name', `%${searchId}%`)
+                .limit(1);
+              prodRow = matchedProds?.[0];
+            }
+
+            let finalMediaUrl: string | null = null;
+            let primaryImg: any = null;
+
+            if (prodRow?.id) {
+              const { data: imgRows } = await supabase
+                .from('product_images')
+                .select('*')
+                .eq('product_id', prodRow.id)
+                .eq('organization_id', organizationId)
+                .order('is_primary', { ascending: false });
+
+              primaryImg = imgRows?.[0];
+              if (primaryImg) {
+                if (primaryImg.url && (primaryImg.url.startsWith('http://') || primaryImg.url.startsWith('https://'))) {
+                  finalMediaUrl = primaryImg.url;
+                } else if (primaryImg.storage_path) {
+                  try {
+                    const { data: signedData } = await supabase
+                      .storage
+                      .from('product-images')
+                      .createSignedUrl(primaryImg.storage_path, 86400);
+
+                    if (signedData?.signedUrl) {
+                      finalMediaUrl = signedData.signedUrl;
+                    }
+                  } catch (signErr) {
+                    console.warn('[AIToolsRegistry] Storage createSignedUrl warning:', signErr);
+                  }
+                }
+              }
+
+              if (!finalMediaUrl && prodRow.image_url && (prodRow.image_url.startsWith('http://') || prodRow.image_url.startsWith('https://'))) {
+                finalMediaUrl = prodRow.image_url;
+              }
+            }
+
+            if (!prodRow || !finalMediaUrl) {
               return {
                 result: {
                   success: false,
-                  message: `Aucune photo n'est rattachée au produit ${prodRow?.name || args.productId}.`,
+                  error_code: 'NO_IMAGE_AVAILABLE',
+                  message: `Aucune photo n'est disponible ou rattachée au produit ${prodRow?.name || searchId}.`,
+                  productName: prodRow?.name || searchId,
                 },
               };
             }
 
-            const captionText = args.caption || `📸 ${prodRow?.name || 'Produit'} — ${prodRow?.selling_price ? prodRow.selling_price.toLocaleString('fr-FR') + ' XOF' : ''}`;
+            const captionText = args.caption || `📸 ${prodRow.name} — ${prodRow.selling_price ? prodRow.selling_price.toLocaleString('fr-FR') + ' XOF' : ''}`;
 
             if (providerAdapter && providerIdentity && destPhone) {
               const sendRes = await providerAdapter.sendMediaMessage(providerIdentity, {
                 toPhoneNumber: destPhone,
                 mediaType: 'image',
-                mediaUrl: primaryImg.url,
+                mediaUrl: finalMediaUrl,
                 caption: captionText,
               });
 
@@ -345,7 +393,7 @@ export class AIToolsRegistry {
                   sender_id: 'SALES_AI',
                   message_type: 'IMAGE',
                   content: captionText,
-                  media_url: primaryImg.url,
+                  media_url: finalMediaUrl,
                   external_message_id: sendRes.externalMessageId,
                   status: 'SENT',
                 });
@@ -354,8 +402,10 @@ export class AIToolsRegistry {
               return {
                 result: {
                   success: sendRes.status === 'SENT',
-                  productName: prodRow?.name,
-                  imageUrl: primaryImg.url,
+                  provider_message_id: sendRes.externalMessageId || null,
+                  status: sendRes.status,
+                  productName: prodRow.name,
+                  imageUrl: finalMediaUrl,
                   caption: captionText,
                   sentToWhatsApp: sendRes.status === 'SENT',
                 },
@@ -365,8 +415,8 @@ export class AIToolsRegistry {
             return {
               result: {
                 success: true,
-                productName: prodRow?.name,
-                imageUrl: primaryImg.url,
+                productName: prodRow.name,
+                imageUrl: finalMediaUrl,
                 caption: captionText,
                 sentToWhatsApp: false,
               },

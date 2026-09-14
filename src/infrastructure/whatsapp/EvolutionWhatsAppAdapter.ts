@@ -103,8 +103,13 @@ export class EvolutionWhatsAppAdapter implements IWhatsAppProvider {
         },
         body: JSON.stringify({
           number: cleanTo,
+          media: dto.mediaUrl,
+          mediatype: dto.mediaType || 'image',
+          mimetype: dto.mediaType === 'image' ? 'image/jpeg' : 'application/octet-stream',
+          caption: dto.caption || '',
+          fileName: 'product_photo.jpg',
           mediaMessage: {
-            mediatype: dto.mediaType,
+            mediatype: dto.mediaType || 'image',
             media: dto.mediaUrl,
             caption: dto.caption || '',
           },
