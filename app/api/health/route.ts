@@ -9,6 +9,8 @@ export async function GET() {
     SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY) ? 'PRESENT' : 'MISSING',
     EVOLUTION_API_URL: Boolean(process.env.EVOLUTION_API_URL) ? 'PRESENT' : 'MISSING',
     EVOLUTION_API_KEY: Boolean(process.env.EVOLUTION_API_KEY) ? 'PRESENT' : 'MISSING',
+    OPENAI_API_KEY: Boolean(process.env.OPENAI_API_KEY) ? 'PRESENT' : 'MISSING',
+    GROQ_API_KEY: Boolean(process.env.GROQ_API_KEY) ? 'PRESENT' : 'MISSING',
     ANTHROPIC_API_KEY: Boolean(process.env.ANTHROPIC_API_KEY) ? 'PRESENT' : 'MISSING',
     WHATSAPP_VERIFY_TOKEN: Boolean(process.env.WHATSAPP_VERIFY_TOKEN) ? 'PRESENT' : 'MISSING',
   };
