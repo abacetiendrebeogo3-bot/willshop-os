@@ -348,7 +348,9 @@ ${imageSendingRule}
 8. ATTRIBUTION PUBLICITAIRE ET ACCUEIL PERSONNALISÉ :
    - Si un produit publicitaire est identifié avec une confiance suffisante (confidence: HIGH ou MEDIUM, produit existant et en stock), commence DIRECTEMENT la conversation autour de ce produit et envoie sa photo (si l'envoi auto d'images est activé) sans demander quelle publicité le client a vue.
    - Si le produit a confidence: LOW, pose une question ouverte bienveillante.
-   - Si la provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue ! Vous recherchez quel produit ?").`;
+   - Si la provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue ! Vous recherchez quel produit ?").
+9. GESTION STRICTE DES QUARTIERS ET LIVRAISON :
+   - Dès qu'un quartier de livraison est fourni par le client (ex: "Somgandé") OU vérifié avec succès (available: true via l'outil check_delivery_zone), NE REDEMANDE PLUS JAMAIS "Vous êtes dans quel quartier ?" au client. Poursuis directement la confirmation de la commande.`;
 
     // Construct structured message history for Anthropic API
     const structuredMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
@@ -400,9 +402,12 @@ ${imageSendingRule}
     let triggerHandoff = false;
     let photoToolAttempted = false;
     let photoToolSuccess = false;
+    let toolExecutionSummary = '';
 
     // Handle tool execution if LLM requested a tool call
     if (result.toolCalls && result.toolCalls.length > 0 && this.toolsRegistry && organizationId) {
+      const toolResultsSummaryParts: string[] = [];
+
       for (const toolCall of result.toolCalls) {
         const execRes = await this.toolsRegistry.executeTool(toolCall.name, toolCall.input, organizationId, aiAgentConfig, execOptions);
         if (execRes.triggerHandoff) {
@@ -418,10 +423,39 @@ ${imageSendingRule}
             (execRes.result.imageUrl || execRes.result.visualUrl || execRes.result.sentToWhatsApp || execRes.result.productId)
           );
         }
+
+        toolResultsSummaryParts.push(`[Outil ${toolCall.name} exécuté avec succès]: ${JSON.stringify(execRes.result)}`);
       }
+
+      toolExecutionSummary = toolResultsSummaryParts.join('\n');
     }
 
-    const rawResponse = result.content || "Merci pour votre message ! Un conseiller est à votre disposition.";
+    let rawResponse = result.content || "Merci pour votre message ! Un conseiller est à votre disposition.";
+
+    // If a tool was executed (e.g. check_delivery_zone), run second turn so Anthropic includes the tool output!
+    if (toolExecutionSummary) {
+      try {
+        const secondTurnMessages = [
+          ...structuredMessages,
+          { role: 'assistant' as const, content: rawResponse || 'Je vérifie les informations...' },
+          { role: 'user' as const, content: `<tool_execution_results>\n${toolExecutionSummary}\n</tool_execution_results>\n\nNote: Les résultats ci-dessus sont confirmés par le système. Poursuis la conversation avec le client de manière chaleureuse en prenant en compte ces résultats.` }
+        ];
+
+        const secondTurnResult = await (this.aiGateway as AnthropicAIGateway).generateCompletion({
+          agentName,
+          model: selectedModel,
+          messages: secondTurnMessages,
+          tools: toolDefs,
+          maxTokens: 400,
+        });
+
+        if (secondTurnResult.content && secondTurnResult.content.trim()) {
+          rawResponse = secondTurnResult.content.trim();
+        }
+      } catch (secondTurnErr) {
+        console.warn('[SalesAgentService Second Turn Tool Execution Warning]', secondTurnErr);
+      }
+    }
     let sanitized = sanitizeResponseText(rawResponse);
     let finalResponseText = sanitized.cleanedText;
 

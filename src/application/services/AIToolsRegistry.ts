@@ -23,6 +23,21 @@ export interface ToolExecutionContextOptions {
   conversationId?: string;
 }
 
+/**
+ * Generic normalization function for delivery locations:
+ * Removes accents (NFD), converts to lowercase, trims whitespace, and removes punctuation.
+ */
+export function normalizeDeliveryLocation(str: string): string {
+  if (!str) return '';
+  return str
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export class AIToolsRegistry {
   constructor(
     private readonly productRepo: IProductRepository,
@@ -188,30 +203,53 @@ export class AIToolsRegistry {
         }
 
         case 'check_delivery_zone': {
-          const queryCity = (args.city || '').toLowerCase().trim();
-          const queryDistrict = (args.district || '').toLowerCase().trim();
-          const searchQuery = `${queryDistrict} ${queryCity}`.trim();
+          const rawCity = args.city || args.district || '';
+          const rawDistrict = args.district || args.city || '';
+
+          const queryCityNorm = normalizeDeliveryLocation(rawCity);
+          const queryDistrictNorm = normalizeDeliveryLocation(rawDistrict);
+          const searchQueryNorm = normalizeDeliveryLocation(`${rawDistrict} ${rawCity}`);
 
           const configuredZones = (aiAgentConfig?.delivery_zones || []) as any[];
 
-          // Search in real configured delivery zones FIRST
+          // Search in real configured delivery zones with Unicode accent normalization
           const matchedZone = configuredZones.find((z: any) => {
             if (z.status === 'ARCHIVED' || z.status === 'INACTIVE') return false;
-            const nameMatch = z.name && (z.name.toLowerCase().includes(searchQuery) || searchQuery.includes(z.name.toLowerCase()));
-            const districtMatch = Array.isArray(z.districts) && z.districts.some((d: string) =>
-              searchQuery.includes(d.toLowerCase()) || d.toLowerCase().includes(queryCity) || (queryDistrict && d.toLowerCase().includes(queryDistrict))
+
+            const zoneNameNorm = normalizeDeliveryLocation(z.name || '');
+            const districtsNorm = Array.isArray(z.districts)
+              ? z.districts.map((d: any) => normalizeDeliveryLocation(String(d)))
+              : [];
+
+            const nameMatch = zoneNameNorm && (
+              zoneNameNorm.includes(searchQueryNorm) ||
+              searchQueryNorm.includes(zoneNameNorm) ||
+              (queryDistrictNorm && (zoneNameNorm.includes(queryDistrictNorm) || queryDistrictNorm.includes(zoneNameNorm)))
             );
+
+            const districtMatch = districtsNorm.some((dNorm: string) => {
+              if (!dNorm) return false;
+              return (
+                (queryDistrictNorm && (dNorm === queryDistrictNorm || dNorm.includes(queryDistrictNorm) || queryDistrictNorm.includes(dNorm))) ||
+                (searchQueryNorm && (dNorm === searchQueryNorm || dNorm.includes(searchQueryNorm) || searchQueryNorm.includes(dNorm))) ||
+                (queryCityNorm && dNorm === queryCityNorm)
+              );
+            });
+
             return nameMatch || districtMatch;
           });
 
           if (matchedZone) {
             return {
               result: {
-                city: args.city,
+                found: true,
+                city: args.city || 'Ouagadougou',
                 district: args.district || matchedZone.name,
                 zoneName: matchedZone.name,
                 deliveryFee: Number(matchedZone.fee),
+                fee: Number(matchedZone.fee),
                 estimatedDelay: matchedZone.delay || '24h',
+                eta: matchedZone.delay || '24h',
                 available: true,
                 notes: matchedZone.notes || '',
               },
@@ -221,9 +259,11 @@ export class AIToolsRegistry {
           // Unlisted zone for this organization: DO NOT GUESS OR USE HARDCODED CITY FALLBACKS
           return {
             result: {
-              city: args.city,
+              found: false,
+              city: args.city || '',
               district: args.district || 'Non répertorié',
               deliveryFee: null,
+              fee: null,
               available: false,
               message: "Zone non répertoriée dans les tarifs habituels de l'entreprise. Un conseiller commercial va vérifier les frais de livraison pour votre quartier.",
             },
