@@ -3,6 +3,8 @@
  * Pure Domain Layer — ZERO external dependencies.
  */
 
+import { AdAttribution } from './AdAttributionEntities';
+
 export type WhatsAppProviderType = 'EVOLUTION' | 'META_CLOUD_API';
 export type WhatsAppMessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'VIDEO' | 'DOCUMENT' | 'BUTTON_REPLY' | 'UNKNOWN';
 
@@ -19,6 +21,7 @@ export interface InboundWhatsAppEvent {
   fromMe: boolean; // True if sent from commercial's WhatsApp app
   timestamp: Date;
   rawPayload: Record<string, any>;
+  attribution?: Partial<AdAttribution>;
 }
 
 export interface NormalizedWhatsAppSendDTO {

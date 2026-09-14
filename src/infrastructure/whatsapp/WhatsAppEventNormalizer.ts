@@ -8,6 +8,7 @@ import {
   InboundWhatsAppEvent,
   WhatsAppMessageType,
 } from '../../domain/entities/WhatsAppEventEntities';
+import { AdAttribution, AttributionSource } from '../../domain/entities/AdAttributionEntities';
 
 /**
  * Normalizes any raw phone number into a canonical E.164 format (+22672019524).
@@ -32,6 +33,38 @@ export class WhatsAppEventNormalizer {
       return this.normalizeEvolution(rawPayload);
     }
     return this.normalizeMeta(rawPayload);
+  }
+
+  private static extractAttributionFromText(text: string): Partial<AdAttribution> | null {
+    if (!text) return null;
+
+    // Explicit tracking tags (e.g. tracking_id=..., ref=..., utm_campaign=..., [ref:KM_01])
+    const refMatch =
+      text.match(/(?:ref|tracking_id|utm_campaign|ws_ref)[=:]\s*([A-Za-z0-9_-]+)/i) ||
+      text.match(/\[ref:\s*([A-Za-z0-9_-]+)\]/i);
+
+    if (refMatch) {
+      const code = refMatch[1];
+      let productName: string | undefined;
+      let adName = `Tracking Ad (${code})`;
+
+      if (code.toUpperCase().includes('KM') || code.toLowerCase().includes('minceur')) productName = 'Kit Minceur';
+      if (code.toUpperCase().includes('MC') || code.toLowerCase().includes('maca')) productName = 'Maca';
+
+      return {
+        source: 'FACEBOOK_ADS',
+        sourceType: 'tracking_link',
+        platform: 'META_ADS',
+        adId: code,
+        adName,
+        productName,
+        confidence: 'HIGH',
+        attributionMethod: 'TRACKING_LINK_ID',
+        metadata: { trackingCode: code },
+      };
+    }
+
+    return null;
   }
 
   private static normalizeEvolution(payload: any): InboundWhatsAppEvent | null {
@@ -96,6 +129,37 @@ export class WhatsAppEventNormalizer {
       return null;
     }
 
+    const extAd = msgContent?.contextInfo?.externalAdReply;
+    let attribution: Partial<AdAttribution> | undefined;
+
+    if (extAd) {
+      const headline = extAd.title || extAd.body || '';
+      let productName: string | undefined;
+      if (headline.toLowerCase().includes('minceur')) productName = 'Kit Minceur';
+      else if (headline.toLowerCase().includes('maca')) productName = 'Maca';
+
+      attribution = {
+        source: 'FACEBOOK_ADS',
+        sourceType: 'ad',
+        platform: 'META_ADS',
+        adId: extAd.sourceId || extAd.sourceUrl || `EVO-AD-${Date.now()}`,
+        adName: extAd.title || 'Evolution External Ad',
+        productName,
+        sourceUrl: extAd.sourceUrl,
+        confidence: 'HIGH',
+        attributionMethod: 'META_REFERRAL_DIRECT',
+        metadata: { rawExternalAd: extAd },
+      };
+    } else {
+      attribution = this.extractAttributionFromText(textBody) || {
+        source: 'UNKNOWN',
+        sourceType: 'unknown',
+        platform: 'UNKNOWN',
+        confidence: 'UNKNOWN',
+        attributionMethod: 'UNKNOWN',
+      };
+    }
+
     return {
       provider: 'EVOLUTION',
       providerIdentity,
@@ -108,6 +172,7 @@ export class WhatsAppEventNormalizer {
       fromMe,
       timestamp: new Date(msgData.messageTimestamp ? msgData.messageTimestamp * 1000 : Date.now()),
       rawPayload: payload,
+      attribution,
     };
   }
 
@@ -146,6 +211,41 @@ export class WhatsAppEventNormalizer {
       textBody = messageObject.document?.filename || '[Document]';
     }
 
+    const referral = messageObject.referral;
+    let attribution: Partial<AdAttribution> | undefined;
+
+    if (referral) {
+      const sourceUrl = referral.source_url || '';
+      const isInstagram = sourceUrl.includes('instagram.com') || referral.source_type === 'instagram_ad';
+      const source: AttributionSource = isInstagram ? 'INSTAGRAM_ADS' : 'FACEBOOK_ADS';
+      const headline = referral.headline || referral.body || '';
+
+      let productName: string | undefined;
+      if (headline.toLowerCase().includes('minceur')) productName = 'Kit Minceur';
+      else if (headline.toLowerCase().includes('maca')) productName = 'Maca';
+
+      attribution = {
+        source,
+        sourceType: referral.source_type || 'ad',
+        platform: 'META_ADS',
+        adId: referral.source_id,
+        adName: referral.headline || 'Meta Ad',
+        productName,
+        sourceUrl,
+        confidence: 'HIGH',
+        attributionMethod: 'META_REFERRAL_DIRECT',
+        metadata: { rawReferral: referral },
+      };
+    } else {
+      attribution = this.extractAttributionFromText(textBody) || {
+        source: 'UNKNOWN',
+        sourceType: 'unknown',
+        platform: 'UNKNOWN',
+        confidence: 'UNKNOWN',
+        attributionMethod: 'UNKNOWN',
+      };
+    }
+
     return {
       provider: 'META_CLOUD_API',
       providerIdentity,
@@ -157,6 +257,7 @@ export class WhatsAppEventNormalizer {
       fromMe: false, // Meta webhooks only deliver inbound customer messages unless echo is enabled
       timestamp: new Date(messageObject.timestamp ? Number(messageObject.timestamp) * 1000 : Date.now()),
       rawPayload: payload,
+      attribution,
     };
   }
 }

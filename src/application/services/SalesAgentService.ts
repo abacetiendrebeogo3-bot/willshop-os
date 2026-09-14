@@ -53,7 +53,8 @@ export function sanitizeResponseText(rawText: string): { cleanedText: string; ha
   cleaned = cleaned
     .replace(/<internal_context>[\s\S]*?<\/internal_context>/gi, '')
     .replace(/<customer_message>[\s\S]*?<\/customer_message>/gi, '')
-    .replace(/<\/?(?:internal_context|customer_message|instructions_commerciales)>/gi, '')
+    .replace(/<marketing_attribution>[\s\S]*?<\/marketing_attribution>/gi, '')
+    .replace(/<\/?(?:internal_context|customer_message|marketing_attribution|instructions_commerciales)>/gi, '')
     .trim();
 
   // 2. Precise leak & diagnostic patterns (avoiding single word false positives)
@@ -80,6 +81,7 @@ export function sanitizeResponseText(rawText: string): { cleanedText: string; ha
     /le client a-t-il/i,
     /faut-il que je/i,
     /ou y a-t-il une/i,
+    /marketing_attribution/i,
   ];
 
   const hasLeak = SPECIFIC_LEAK_PATTERNS.some((pattern) => pattern.test(cleaned));
@@ -111,6 +113,7 @@ export class SalesAgentContextService {
     customer: Customer,
     recentMessages: Message[],
     availableProducts: Product[],
+    adAttribution?: any,
     tokenBudget = 1000
   ): string {
     const customerInfo = `Client: ${customer.fullName} (${customer.phone}) - Statut: ${customer.status}`;
@@ -119,9 +122,26 @@ export class SalesAgentContextService {
       .map((p) => `- ID: ${p.id} | ${p.name} (SKU: ${p.sku}): ${p.sellingPrice} XOF (Prix fixe) ${p.minimumStock > 0 ? `| Stock: ${p.minimumStock}` : '| SUR COMMANDE'}`)
       .join('\n');
 
+    let attributionBlock = '';
+    if (adAttribution && adAttribution.confidence !== 'UNKNOWN' && adAttribution.source !== 'UNKNOWN') {
+      attributionBlock = `
+=== ATTRIBUTION MARKETING ET PROVENANCE PROSPECT ===
+<marketing_attribution>
+source: ${adAttribution.source}
+platform: ${adAttribution.platform || 'META_ADS'}
+campaign: ${adAttribution.campaignName || 'N/A'}
+ad: ${adAttribution.adName || 'N/A'}
+product_id: ${adAttribution.productId || 'N/A'}
+product_name: ${adAttribution.productName || 'N/A'}
+confidence: ${adAttribution.confidence}
+method: ${adAttribution.attributionMethod || 'UNKNOWN'}
+</marketing_attribution>
+`;
+    }
+
     const rawContext = `=== CONTEXTE COMMERCIAL INTERNE WILLSHOP ===
 ${customerInfo}
-
+${attributionBlock}
 === PRODUITS AUTORISÉS (PRIX STRICTS - NE JAMAIS INVENTER) ===
 ${productsInfo || 'Aucun produit au catalogue.'}
 `;
@@ -174,7 +194,8 @@ export class SalesAgentService {
     availableProducts: Product[],
     organizationId?: string,
     aiAgentConfig?: any,
-    execOptions?: ToolExecutionContextOptions
+    execOptions?: ToolExecutionContextOptions,
+    adAttribution?: any
   ): Promise<{
     responseText: string;
     triggerHandoff: boolean;
@@ -189,7 +210,7 @@ export class SalesAgentService {
       model: string;
     };
   }> {
-    const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts);
+    const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts, adAttribution);
 
     // Isolate current incoming customer query vs past message history
     let historyMsgs: Message[] = [];
@@ -293,7 +314,13 @@ RÈGLES ABSOLUES ET INVIOLABLES DE COMMUNICATION CLIENT (WHATSAPP) :
    - Si le client demande la livraison dans une zone/quartier, utilise check_delivery_zone.
    - Si le client a des doutes ou demande des témoignages/avis, utilise search_testimonials ou send_testimonial.
    - Si le client veut commander ou demande le statut d une commande, utilise les outils dédiés.
-   - Si le client demande un conseiller humain ou une urgence complexe, réponds poliment et utilise escalate_to_human.`;
+   - Si le client demande un conseiller humain ou une urgence complexe, réponds poliment et utilise escalate_to_human.
+7. ATTRIBUTION PUBLICITAIRE ET ACCUEIL PERSONNALISÉ :
+   - Utilise les informations fiables de provenance disponibles pour comprendre pourquoi le prospect est arrivé et personnaliser immédiatement ton accueil.
+   - Si un produit publicitaire est identifié avec une confiance suffisante (confidence: HIGH ou MEDIUM, produit existant au catalogue et EN STOCK), commence DIRECTEMENT la conversation autour de ce produit. Ne demande JAMAIS au prospect quel produit l'intéresse ou quelle publicité il a vue.
+   - Si le produit attribué est EN RUPTURE DE STOCK (availableStock === 0), informe le client avec honnêteté de la rupture et propose les alternatives.
+   - Si le produit a confidence: LOW, pose une question ouverte bienveillante ("Vous cherchez le Kit Minceur ou vous recherchez autre chose ?").
+   - Si l'information de provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue chez WillShop 😊 Vous recherchez quel produit ?").`;
 
     // Construct structured message history for Anthropic API
     const structuredMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

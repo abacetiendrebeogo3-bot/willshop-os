@@ -14,6 +14,7 @@ import { AIToolsRegistry } from './AIToolsRegistry';
 import { SupabaseProductRepository } from '../../infrastructure/repositories/SupabaseDataCoreRepositories';
 import { InMemoryOrderRepository } from '../../infrastructure/repositories/InMemoryDataCoreRepositories';
 import { CreateOrderService } from './OrderStockApplicationServices';
+import { MarketingAttributionService } from './MarketingAttributionService';
 
 export class WhatsAppApplicationService {
   constructor(
@@ -535,6 +536,30 @@ export class WhatsAppApplicationService {
         conversationId,
       };
 
+      let activeAttribution: any = event.attribution || null;
+      if (activeAttribution) {
+        try {
+          const attrService = new MarketingAttributionService(this.supabase);
+          const attrRes = await attrService.recordAttribution({
+            organizationId: targetOrgId,
+            customerId,
+            conversationId,
+            source: activeAttribution.source || 'UNKNOWN',
+            sourceType: activeAttribution.sourceType,
+            platform: activeAttribution.platform,
+            adId: activeAttribution.adId,
+            adName: activeAttribution.adName,
+            productName: activeAttribution.productName,
+            sourceUrl: activeAttribution.sourceUrl,
+            confidence: activeAttribution.confidence || 'UNKNOWN',
+            attributionMethod: activeAttribution.attributionMethod || 'UNKNOWN',
+          });
+          activeAttribution = attrRes.lastTouch;
+        } catch (attrErr) {
+          console.warn('[Attribution Recording Warning]', attrErr);
+        }
+      }
+
       const startTimeMs = Date.now();
       const aiResult = await salesAgentService.generateResponse(
         mockCustomer,
@@ -542,7 +567,8 @@ export class WhatsAppApplicationService {
         availableProducts,
         targetOrgId,
         aiConfig,
-        execOptions
+        execOptions,
+        activeAttribution
       );
       const latencyMs = Date.now() - startTimeMs;
 
