@@ -139,12 +139,14 @@ export default function AIAgentsConfigPage() {
 
   // Section 1: Agent Identity Config State
   const [identityConfig, setIdentityConfig] = useState({
-    name: "Sales AI WILLShop",
+    name: "Sales AI",
     presentation: "Assistant commercial virtuel disponible 24/7 pour conseiller et accompagner vos clients.",
     tone: "Professionnel & Chaleureux",
     language: "Français",
     style: "Concis (1-2 phrases)",
-    customInstructions: "Accueillir chaleureusement les clients en français. Être poli et donner des informations précises sur nos produits.",
+    customInstructions: "Accueillir chaleureusement les clients. Être poli et donner des informations précises sur nos produits.",
+    auto_send_images: true,
+    handoff_keywords: "humain, agent, conseiller, remboursement, responsable, parler à quelqu'un, problème",
   });
 
   // Section 2: Structured Knowledge Base States
@@ -154,16 +156,16 @@ export default function AIAgentsConfigPage() {
 
   // 1. Company Info State
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
-    name: "WILLShop OS",
-    sector: "Commerce & Vente en ligne",
-    country: "Burkina Faso",
-    city: "Ouagadougou",
-    address: "Secteur 13, Zogona",
-    phone: "+226 70 00 00 00",
-    email: "contact@willshop.bf",
-    hours: "Lundi - Samedi : 08h00 - 20h00",
-    description: "Boutique en ligne spécialisée dans la vente de produits de qualité supérieure avec livraison rapide.",
-    additionalInfo: "Service client disponible sur WhatsApp 24/7.",
+    name: "",
+    sector: "",
+    country: "",
+    city: "",
+    address: "",
+    phone: "",
+    email: "",
+    hours: "",
+    description: "",
+    additionalInfo: "",
   });
 
   // 2. Delivery Zones State
@@ -363,24 +365,28 @@ export default function AIAgentsConfigPage() {
         setAiEnabled(settings.ai_agent_enabled ?? true);
 
         const aiConfig = settings.ai_agent_config || {};
-        if (aiConfig.name) {
-          setIdentityConfig({
-            name: aiConfig.name || "Sales AI WILLShop",
-            presentation: aiConfig.presentation || "",
-            tone: aiConfig.tone || "Professionnel & Chaleureux",
-            language: aiConfig.language || "Français",
-            style: aiConfig.style || "Concis (1-2 phrases)",
-            customInstructions: aiConfig.custom_instructions || "",
-          });
-        }
+        setIdentityConfig({
+          name: aiConfig.name || "Sales AI",
+          presentation: aiConfig.presentation || "",
+          tone: aiConfig.tone || "Professionnel & Chaleureux",
+          language: aiConfig.language || "Français",
+          style: aiConfig.style || "Concis (1-2 phrases)",
+          customInstructions: aiConfig.custom_instructions || "",
+          auto_send_images: aiConfig.auto_send_images ?? true,
+          handoff_keywords: Array.isArray(aiConfig.handoff_keywords)
+            ? aiConfig.handoff_keywords.join(", ")
+            : typeof aiConfig.handoff_keywords === "string"
+            ? aiConfig.handoff_keywords
+            : "humain, agent, conseiller, remboursement, responsable, parler à quelqu'un, problème",
+        });
 
         // 1. Company Info Sync
         if (aiConfig.company_info) {
           setCompanyInfo({
-            name: aiConfig.company_info.name || org.name || "WILLShop OS",
-            sector: aiConfig.company_info.sector || "Commerce & Vente en ligne",
-            country: aiConfig.company_info.country || "Burkina Faso",
-            city: aiConfig.company_info.city || "Ouagadougou",
+            name: aiConfig.company_info.name || org.name || "",
+            sector: aiConfig.company_info.sector || "",
+            country: aiConfig.company_info.country || "",
+            city: aiConfig.company_info.city || "",
             address: aiConfig.company_info.address || "",
             phone: aiConfig.company_info.phone || "",
             email: aiConfig.company_info.email || "",
@@ -501,6 +507,10 @@ export default function AIAgentsConfigPage() {
           language: identityConfig.language,
           style: identityConfig.style,
           custom_instructions: identityConfig.customInstructions,
+          auto_send_images: identityConfig.auto_send_images,
+          handoff_keywords: identityConfig.handoff_keywords
+            ? identityConfig.handoff_keywords.split(",").map((k) => k.trim()).filter(Boolean)
+            : ["humain", "agent", "conseiller", "remboursement", "responsable"],
           enabled: aiEnabled,
           company_info: companyInfo,
           delivery_zones: deliveryZones,
@@ -1017,9 +1027,27 @@ export default function AIAgentsConfigPage() {
                   rows={3}
                   value={identityConfig.customInstructions}
                   onChange={(e) => setIdentityConfig({ ...identityConfig, customInstructions: e.target.value })}
-                  placeholder="Ex: Toujours envoyer la photo du produit immédiatement après présentation..."
+                  placeholder="Ex: Toujours accueillir les clients chaleureusement..."
                   className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-sans"
                 />
+              </div>
+
+              <div className="bg-[#181824] border border-[#282838] p-4 rounded-xl flex items-center justify-between">
+                <div>
+                  <span className="font-semibold text-white text-sm block">Envoi Automatique d'Images Produit (auto_send_images)</span>
+                  <span className="text-xs text-gray-400 block mt-0.5">
+                    Dès qu'un produit est identifié avec son prix et stock, l'agent envoie l'image réelle sans demander la permission au client.
+                  </span>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={identityConfig.auto_send_images}
+                    onChange={(e) => setIdentityConfig({ ...identityConfig, auto_send_images: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#7B61FF]"></div>
+                </label>
               </div>
             </div>
           )}
@@ -1811,6 +1839,22 @@ export default function AIAgentsConfigPage() {
                 <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/30">
                   🟢 ACTIVÉE
                 </span>
+              </div>
+
+              <div className="bg-[#181824] p-4 rounded-xl border border-[#282838] space-y-2">
+                <label className="text-xs font-bold text-white block">
+                  Mots-clés de Transfert Humain Configurables (handoff_keywords)
+                </label>
+                <p className="text-xs text-gray-400">
+                  Saisissez les mots-clés (séparés par des virgules) qui déclenchent le transfert immédiat vers un conseiller humain quand le client les mentionne.
+                </p>
+                <input
+                  type="text"
+                  value={identityConfig.handoff_keywords}
+                  onChange={(e) => setIdentityConfig({ ...identityConfig, handoff_keywords: e.target.value })}
+                  placeholder="humain, agent, conseiller, remboursement, responsable, problème"
+                  className="w-full bg-[#12121A] border border-[#282838] rounded-xl p-3 text-white text-sm font-mono focus:border-purple-400 outline-none"
+                />
               </div>
             </div>
           )}

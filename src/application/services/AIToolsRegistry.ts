@@ -218,25 +218,14 @@ export class AIToolsRegistry {
             };
           }
 
-          // Fallback if no specific zone matched
-          let fee = 1500;
-          let delay = '24 heures';
-
-          if (queryCity.includes('ouagadougou') || queryCity.includes('ouaga')) {
-            fee = 1000;
-            delay = '2 à 4 heures';
-          } else if (queryCity.includes('bobo')) {
-            fee = 2000;
-            delay = '24 heures';
-          }
-
+          // Unlisted zone for this organization: DO NOT GUESS OR USE HARDCODED CITY FALLBACKS
           return {
             result: {
               city: args.city,
-              district: args.district || 'Centre',
-              deliveryFee: fee,
-              estimatedDelay: delay,
-              available: true,
+              district: args.district || 'Non répertorié',
+              deliveryFee: null,
+              available: false,
+              message: "Zone non répertoriée dans les tarifs habituels de l'entreprise. Un conseiller commercial va vérifier les frais de livraison pour votre quartier.",
             },
           };
         }

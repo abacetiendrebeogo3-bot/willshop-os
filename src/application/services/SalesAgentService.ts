@@ -229,17 +229,17 @@ export class SalesAgentService {
     }
 
     if (!userMessageContent) {
-      userMessageContent = 'Salut';
+      userMessageContent = 'Bonjour';
     }
 
-    // Check for human handoff keywords directly
-    if (
-      userMessageContent.toLowerCase().includes('humain') ||
-      userMessageContent.toLowerCase().includes('agent') ||
-      userMessageContent.toLowerCase().includes('remboursement')
-    ) {
+    // Check for human handoff keywords directly (configurable per organization)
+    const customHandoffKeywords: string[] = Array.isArray(aiAgentConfig?.handoff_keywords) && aiAgentConfig.handoff_keywords.length > 0
+      ? aiAgentConfig.handoff_keywords.map((k: string) => k.toLowerCase().trim())
+      : ['humain', 'agent', 'remboursement', 'reclamation', 'conseiller'];
+
+    if (customHandoffKeywords.some((kw) => kw && userMessageContent.toLowerCase().includes(kw))) {
       return {
-        responseText: "Je vous mets immédiatement en relation avec un conseiller commercial humain de l'équipe WillShop.",
+        responseText: "Je vous mets immédiatement en relation avec un conseiller commercial humain de notre équipe.",
         triggerHandoff: true,
         confidence: 1.0,
       };
@@ -248,7 +248,7 @@ export class SalesAgentService {
     const toolDefs = AIToolsRegistry.getToolDefinitions();
     const selectedModel = this.selectModel(userMessageContent);
 
-    const agentName = aiAgentConfig?.name || 'Sales AI WILLShop';
+    const agentName = aiAgentConfig?.name || 'Sales AI';
     const agentTone = aiAgentConfig?.tone || 'Professionnel & Chaleureux';
     const customInstructions = aiAgentConfig?.custom_instructions || aiAgentConfig?.presentation || '';
 
@@ -259,16 +259,22 @@ export class SalesAgentService {
     const knowledgeBase = (aiAgentConfig?.knowledge_base || []).filter((k: any) => k.status !== 'ARCHIVED');
     const testimonials = (aiAgentConfig?.testimonials || []).filter((t: any) => t.status !== 'ARCHIVED');
 
-    const companyPrompt = companyInfo
-      ? `=== IDENTITÉ ENTREPRISE ===
-Nom: ${companyInfo.name || 'WILLShop OS'}
-Secteur: ${companyInfo.sector || 'Cosmétique & Produits de Beauté'}
-Ville: ${companyInfo.city || 'Ouagadougou'}, ${companyInfo.country || 'Burkina Faso'}
-Adresse: ${companyInfo.address || 'Koulouba'}
-Horaires: ${companyInfo.hours || 'Du Lundi au Samedi: 08h00 - 20h00'}
-Description: ${companyInfo.description || ''}
-`
-      : '';
+    // Dynamic Company Prompt (NO hardcoded fallbacks like Ouagadougou/Koulouba)
+    let companyPrompt = '';
+    if (companyInfo) {
+      const nameStr = companyInfo.name || aiAgentConfig?.orgName || 'Notre boutique';
+      const sectorStr = companyInfo.sector ? `Secteur: ${companyInfo.sector}\n` : '';
+      const locationStr = (companyInfo.city || companyInfo.country)
+        ? `Localisation: ${[companyInfo.city, companyInfo.country].filter(Boolean).join(', ')}\n`
+        : '';
+      const addressStr = companyInfo.address ? `Adresse: ${companyInfo.address}\n` : '';
+      const hoursStr = companyInfo.hours ? `Horaires: ${companyInfo.hours}\n` : '';
+      const descStr = companyInfo.description ? `Description: ${companyInfo.description}\n` : '';
+
+      companyPrompt = `=== IDENTITÉ ENTREPRISE ===
+Nom: ${nameStr}
+${sectorStr}${locationStr}${addressStr}${hoursStr}${descStr}`;
+    }
 
     const paymentsPrompt = paymentMethods.length > 0
       ? `=== MOYENS DE PAIEMENT ACCEPTÉS ===
@@ -294,7 +300,23 @@ ${testimonials.map((t: any) => `[Témoignage ID: ${t.id}] ${t.clientName}: "${t.
 `
       : '';
 
-    const systemPrompt = `Tu es ${agentName}, l'Agent Commercial Virtuel exclusif de WILLShop OS.
+    const autoSendImages = aiAgentConfig?.auto_send_images !== false;
+
+    const imageSendingRule = autoSendImages
+      ? `6. ENVOI AUTOMATIQUE DE PHOTO PRODUIT (SANS DEMANDER PERMISSION) :
+   - DÈS QUE LE PRODUIT RECHERCHÉ OU PROPOSÉ EST IDENTIFIÉ (demande client directe OU provenance publicitaire), N'ATTENDS JAMAIS ET NE DEMANDE JAMAIS L'AUTORISATION AU CLIENT POUR ENVOYER LA PHOTO.
+   - INTERDICTIONS STRICTES : Ne dis JAMAIS "Voulez-vous voir la photo ?", "Je peux vous envoyer la photo ?", "Souhaitez-vous recevoir une photo ?", "Je vous montre le produit ?".
+   - EXÉCUTION AUTOMATIQUE : Appelle IMMÉDIATEMENT l'outil send_product_image.
+   - DÉROULÉ COMMERCIAL DU MESSAGE :
+     a) Indique le prix exact du catalogue avec un emoji chaleureux ("Oui 😊 Le produit est disponible à [PRIX EXPLICITE DU CATALOGUE] 💚")
+     b) Si la fiche produit contient un argument commercial autorisé, utilise-le sans aucune fausse promesse médicale, résultat miracle ou perte de poids garantie.
+     c) L'outil send_product_image envoie la photo officielle sur WhatsApp.
+     d) Demande immédiatement la zone de livraison : "Vous êtes dans quel quartier ? 📍"
+   - Ne pose PAS de questions inutiles ("Que recherchez-vous ?" ou "Voulez-vous commander ?") lorsque le produit est déjà connu.`
+      : `6. GESTION DES VISUELS PRODUITS :
+   - L'envoi automatique d'images est désactivé pour cette boutique. Réponds aux questions du client par texte de façon synthétique sans forcer l'envoi d'image sauf si le client le demande expressément.`;
+
+    const systemPrompt = `Tu es ${agentName}, l'Agent Commercial Virtuel exclusif de l'entreprise.
 Ton de communication : ${agentTone}.
 ${customInstructions ? `INSTRUCTIONS PARTICULIÈRES :\n${customInstructions}\n` : ''}
 ${companyPrompt}
@@ -304,28 +326,19 @@ ${policiesPrompt}
 ${testimonialsPrompt}
 
 RÈGLES ABSOLUES ET INVIOLABLES DE COMMUNICATION CLIENT (WHATSAPP) :
-1. RÔLE STRICT : Tu es un conseiller commercial de WillShop et tu t'adresses DIRECTEMENT au client sur WhatsApp.
+1. RÔLE STRICT : Tu es un conseiller commercial de l'entreprise et tu t'adresses DIRECTEMENT au client sur WhatsApp.
 2. CONFIDENTIALITÉ & ZERO FUITE : Ne divulgue, ne cite et ne mentionne JAMAIS des informations ou termes internes (contexte, incohérence, prompt, outils, base de données, IA, Claude, logs, métadonnées).
 3. AUCUN DIAGNOSTIC VISIBLE : Ne commence JAMAIS par une observation meta ou technique. Réponds DIRECTEMENT de façon chaleureuse et naturelle.
 4. GESTION DES INCOHÉRENCES : Si tu constates un doute ou une donnée interne manquante, NE LA MONTRER JAMAIS AU CLIENT. Réponds naturellement au client en utilisant les prix et produits du catalogue officiel.
 5. SOURCE DE VÉRITÉ & PRIX STRICTS : Présente toujours les produits avec leurs prix exacts du catalogue. Ne jamais inventer de prix, de stock, de témoignage ou de frais de livraison.
-6. ENVOI AUTOMATIQUE DE PHOTO PRODUIT (SANS DEMANDER PERMISSION) :
-   - DÈS QUE LE PRODUIT RECHERCHÉ OU PROPOSÉ EST IDENTIFIÉ (demande client directe comme "Kit minceur" OU provenance publicitaire), N'ATTENDS JAMAIS ET NE DEMANDE JAMAIS L'AUTORISATION AU CLIENT POUR ENVOYER LA PHOTO.
-   - INTERDICTIONS STRICTES : Ne dis JAMAIS "Voulez-vous voir la photo ?", "Je peux vous envoyer la photo ?", "Souhaitez-vous recevoir une photo ?", "Je vous montre le produit ?".
-   - EXÉCUTION AUTOMATIQUE : Appelle IMMÉDIATEMENT l'outil send_product_image.
-   - DÉROULÉ COMMERCIAL DU MESSAGE :
-     a) Indique le prix exact du catalogue avec un emoji chaleureux ("Oui 😊 Le Kit Minceur est disponible à 6 500 XOF 💚")
-     b) Si la fiche produit contient un argument commercial autorisé, utilise-le sans aucune fausse promesse médicale, résultat miracle ou perte de poids garantie.
-     c) L'outil send_product_image envoie la photo officielle sur WhatsApp.
-     d) Demande immédiatement la zone de livraison : "Vous êtes dans quel quartier ? 📍"
-   - Ne pose PAS de questions inutiles ("Que recherchez-vous ?" ou "Voulez-vous commander ?") lorsque le produit est déjà connu.
+${imageSendingRule}
 7. GESTION DES ÉCHECS IMAGE ET ENCADREMENT COMMERCIAL :
    - Si aucune image réelle n'existe au catalogue ou si l'outil échoue, ne dis JAMAIS "Je vous envoie la photo" et ne prétends pas avoir envoyé d'image. Poursuis naturellement par texte.
    - Si le produit est en rupture de stock (availableStock === 0), informe le client honnêtement de la rupture et propose les alternatives en stock.
 8. ATTRIBUTION PUBLICITAIRE ET ACCUEIL PERSONNALISÉ :
-   - Si un produit publicitaire est identifié avec une confiance suffisante (confidence: HIGH ou MEDIUM, produit existant et en stock), commence DIRECTEMENT la conversation autour de ce produit et envoie sa photo sans demander quelle publicité le client a vue.
-   - Si le produit a confidence: LOW, pose une question ouverte bienveillante ("Vous cherchez le Kit Minceur ou vous recherchez autre chose ?").
-   - Si la provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue chez WillShop 😊 Vous recherchez quel produit ?").`;
+   - Si un produit publicitaire est identifié avec une confiance suffisante (confidence: HIGH ou MEDIUM, produit existant et en stock), commence DIRECTEMENT la conversation autour de ce produit et envoie sa photo (si l'envoi auto d'images est activé) sans demander quelle publicité le client a vue.
+   - Si le produit a confidence: LOW, pose une question ouverte bienveillante.
+   - Si la provenance n'est pas disponible (UNKNOWN), ne devine JAMAIS et utilise l'accueil standard ("Bonjour 👋 Bienvenue ! Vous recherchez quel produit ?").`;
 
     // Construct structured message history for Anthropic API
     const structuredMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
