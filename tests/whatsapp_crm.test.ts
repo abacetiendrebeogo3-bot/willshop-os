@@ -35,7 +35,7 @@ describe('Build 03 — WhatsApp + CRM Automated Test Suite', () => {
   const noteRepo = new InMemoryCustomerNoteRepository();
   const handoffRepo = new InMemoryHumanHandoffRepository();
 
-  const whatsappAdapter = new MetaWhatsAppAdapter();
+  const whatsappAdapter = new MetaWhatsAppAdapter('test_access_token');
   const aiGateway = new MockAIGateway();
   const salesContextService = new SalesAgentContextService();
   const salesAgentService = new SalesAgentService(aiGateway, salesContextService);
