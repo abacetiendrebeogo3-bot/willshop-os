@@ -115,17 +115,30 @@ export class WhatsAppEventNormalizer {
       messageType = 'IMAGE';
       textBody = msgContent?.imageMessage?.caption || '[Image]';
       mediaUrl = msgContent?.imageMessage?.url;
-    } else if (msgData.messageType === 'audioMessage' || msgContent?.audioMessage) {
+    } else if (
+      msgData.messageType === 'audioMessage' ||
+      msgContent?.audioMessage ||
+      msgData.messageType === 'pttMessage' ||
+      msgContent?.pttMessage ||
+      msgData.type === 'audio'
+    ) {
       messageType = 'AUDIO';
       textBody = '[Vocale]';
-      mediaUrl = msgContent?.audioMessage?.url;
+      mediaUrl = msgContent?.audioMessage?.url || msgContent?.pttMessage?.url || msgData.mediaUrl;
     } else if (msgData.messageType === 'documentMessage' || msgContent?.documentMessage) {
       messageType = 'DOCUMENT';
       textBody = msgContent?.documentMessage?.fileName || '[Document]';
       mediaUrl = msgContent?.documentMessage?.url;
     }
 
-    if (!senderPhone && !textBody) {
+    const base64 =
+      payload.base64 ||
+      msgData.base64 ||
+      msgContent?.base64 ||
+      msgContent?.audioMessage?.base64 ||
+      msgContent?.pttMessage?.base64;
+
+    if (!senderPhone && !textBody && !base64) {
       return null;
     }
 
@@ -169,6 +182,7 @@ export class WhatsAppEventNormalizer {
       messageType,
       textBody,
       mediaUrl,
+      base64,
       fromMe,
       timestamp: new Date(msgData.messageTimestamp ? msgData.messageTimestamp * 1000 : Date.now()),
       rawPayload: payload,

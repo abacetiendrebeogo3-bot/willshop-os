@@ -23,7 +23,49 @@ export class WhatsAppApplicationService {
   ) {}
 
   /**
-   * Transcribes an audio buffer server-side via Whisper API (OpenAI or Groq).
+   * Downloads or decodes the audio buffer from base64 or mediaUrl with exponential backoff retries.
+   */
+  private async fetchAudioBufferWithRetry(event: InboundWhatsAppEvent): Promise<Buffer | null> {
+    if (event.base64) {
+      try {
+        const cleanB64 = event.base64.replace(/^data:audio\/[a-z0-9]+;base64,/i, '').trim();
+        if (cleanB64.length > 20) {
+          return Buffer.from(cleanB64, 'base64');
+        }
+      } catch (b64Err) {
+        console.warn('[Audio base64 decode warning]', b64Err);
+      }
+    }
+
+    if (event.mediaUrl) {
+      const headers: Record<string, string> = {};
+      if (process.env.EVOLUTION_API_KEY) {
+        headers['apikey'] = process.env.EVOLUTION_API_KEY;
+      }
+
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const res = await fetch(event.mediaUrl, { headers });
+          if (res.ok) {
+            const arrayBuf = await res.arrayBuffer();
+            const buf = Buffer.from(arrayBuf);
+            if (buf.length > 50) return buf;
+          }
+        } catch (netErr) {
+          console.warn(`[Audio fetch retry ${attempt}/${maxRetries}]`, netErr);
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, attempt * 300));
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Transcribes an audio buffer server-side via Whisper API (OpenAI or Groq) with retries.
    */
   private async transcribeAudioBuffer(audioBuffer: Buffer, fileName: string): Promise<string | null> {
     const apiKey = process.env.OPENAI_API_KEY || process.env.GROQ_API_KEY;
@@ -34,33 +76,72 @@ export class WhatsAppApplicationService {
       : 'https://api.groq.com/openai/v1/audio/transcriptions';
     const model = process.env.OPENAI_API_KEY ? 'whisper-1' : 'whisper-large-v3';
 
-    try {
-      const formData = new FormData();
-      const uint8 = new Uint8Array(audioBuffer);
-      const blob = new Blob([uint8], { type: 'audio/ogg' });
-      formData.append('file', blob, fileName);
-      formData.append('model', model);
-      formData.append('language', 'fr');
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const formData = new FormData();
+        const uint8 = new Uint8Array(audioBuffer);
+        const blob = new Blob([uint8], { type: 'audio/ogg' });
+        formData.append('file', blob, fileName);
+        formData.append('model', model);
+        formData.append('language', 'fr');
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: formData,
-      });
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: formData,
+        });
 
-      if (!res.ok) {
-        console.warn(`[Whisper API Error] Status ${res.status}`);
-        return null;
+        if (res.ok) {
+          const data = await res.json();
+          return data.text ? data.text.trim() : null;
+        }
+        console.warn(`[Whisper API Error attempt ${attempt}] Status ${res.status}`);
+      } catch (err) {
+        console.warn(`[Transcription Exception attempt ${attempt}]`, err);
       }
 
-      const data = await res.json();
-      return data.text ? data.text.trim() : null;
-    } catch (err) {
-      console.warn('[Transcription Exception]', err);
-      return null;
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, attempt * 300));
+      }
     }
+
+    return null;
+  }
+
+  /**
+   * Validates if a transcription text is meaningful, exploitable, and supported.
+   */
+  private validateTranscriptionExploitability(text: string | null): {
+    isExploitable: boolean;
+    status: 'COMPLETED' | 'INCOMPREHENSIBLE' | 'UNSUPPORTED_LANGUAGE' | 'FAILED';
+    cleanedText: string;
+  } {
+    if (!text || typeof text !== 'string') {
+      return { isExploitable: false, status: 'FAILED', cleanedText: '' };
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { isExploitable: false, status: 'INCOMPREHENSIBLE', cleanedText: '' };
+    }
+
+    // Remove punctuation/filler noise to evaluate core length
+    const cleaned = trimmed.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').trim();
+
+    if (cleaned.length < 3) {
+      return { isExploitable: false, status: 'INCOMPREHENSIBLE', cleanedText: trimmed };
+    }
+
+    // Common filler words or unusable sounds
+    const noiseOnly = ['euh', 'ah', 'hum', 'hein', 'oh', 'voilà'];
+    if (cleaned.length < 4 && noiseOnly.includes(cleaned.toLowerCase())) {
+      return { isExploitable: false, status: 'INCOMPREHENSIBLE', cleanedText: trimmed };
+    }
+
+    return { isExploitable: true, status: 'COMPLETED', cleanedText: trimmed };
   }
 
   /**
@@ -109,6 +190,7 @@ export class WhatsAppApplicationService {
         .select('id')
         .eq('organization_id', targetOrgId)
         .eq('external_message_id', event.externalMessageId)
+        .limit(1)
         .maybeSingle();
 
       if (existingMsg) {
@@ -267,42 +349,60 @@ export class WhatsAppApplicationService {
       };
     }
 
+    // 5b. Check Idempotency for ALL incoming messages before processing
+    if (event.externalMessageId) {
+      const { data: existingMsg } = await this.supabase
+        .from('messages')
+        .select('id')
+        .eq('organization_id', targetOrgId)
+        .eq('external_message_id', event.externalMessageId)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingMsg) {
+        return {
+          status: 'IGNORED',
+          message: `Duplicate external_message_id '${event.externalMessageId}' ignored.`,
+          organizationId: targetOrgId,
+          conversationId,
+        };
+      }
+    }
+
     // 6. Handle AUDIO Messages (WhatsApp Voice Notes)
     if (event.messageType === 'AUDIO') {
-      let audioUrl = event.mediaUrl || '';
+      const audioBuffer = await this.fetchAudioBufferWithRetry(event);
       let transcribedText: string | null = null;
+      let storagePublicUrl: string | null = event.mediaUrl || null;
 
-      if (audioUrl) {
+      if (audioBuffer) {
+        const fileName = `audio_${Date.now()}.ogg`;
+        const storagePath = `${targetOrgId}/${fileName}`;
         try {
-          const audioRes = await fetch(audioUrl);
-          if (audioRes.ok) {
-            const arrayBuf = await audioRes.arrayBuffer();
-            const buffer = Buffer.from(arrayBuf);
+          const { error: upErr } = await this.supabase.storage
+            .from('whatsapp-media')
+            .upload(storagePath, audioBuffer, { contentType: 'audio/ogg', upsert: true });
 
-            const fileName = `audio_${Date.now()}.ogg`;
-            const storagePath = `${targetOrgId}/${fileName}`;
-            const { error: upErr } = await this.supabase.storage
+          if (!upErr) {
+            const { data: urlData } = this.supabase.storage
               .from('whatsapp-media')
-              .upload(storagePath, buffer, { contentType: 'audio/ogg', upsert: true });
-
-            if (!upErr) {
-              const { data: urlData } = this.supabase.storage
-                .from('whatsapp-media')
-                .getPublicUrl(storagePath);
-              if (urlData?.publicUrl) {
-                audioUrl = urlData.publicUrl;
-              }
+              .getPublicUrl(storagePath);
+            if (urlData?.publicUrl) {
+              storagePublicUrl = urlData.publicUrl;
             }
-
-            transcribedText = await this.transcribeAudioBuffer(buffer, fileName);
           }
-        } catch (audioErr) {
-          console.warn('[Audio Processing Warning]', audioErr);
+        } catch (stErr) {
+          console.warn('[Storage upload warning for audio]', stErr);
         }
+
+        transcribedText = await this.transcribeAudioBuffer(audioBuffer, fileName);
       }
 
-      if (transcribedText && transcribedText.length >= 2) {
-        event.textBody = transcribedText;
+      const evalResult = this.validateTranscriptionExploitability(transcribedText);
+
+      if (!evalResult.isExploitable) {
+        // RÈGLE ABSOLUE — VOCAL NON COMPRIS = SILENCE
+        // Record internal message with INCOMPREHENSIBLE status
         await this.supabase.from('messages').insert({
           organization_id: targetOrgId,
           conversation_id: conversationId,
@@ -311,38 +411,67 @@ export class WhatsAppApplicationService {
           sender_type: 'CUSTOMER',
           sender_id: event.senderPhone,
           message_type: 'AUDIO',
-          content: transcribedText,
-          media_url: audioUrl || null,
+          content: '[Message vocal non transcrit / inexploitable]',
+          media_url: storagePublicUrl,
+          external_message_id: event.externalMessageId,
+          status: 'RECEIVED',
+          metadata: {
+            transcription_status: evalResult.status,
+            raw_transcription: transcribedText || null,
+          },
+        });
+
+        // STRICT SILENCE RULE: 0 OUTBOUND MESSAGES SENT, 0 HUMAN HANDOFF CREATED, 0 ANTHROPIC CALLS
+        return {
+          status: 'SUCCESS',
+          message: 'Message vocal inexploitable enregistré en interne. Règle de silence appliquée (0 réponse client, 0 escalade).',
+          organizationId: targetOrgId,
+          conversationId,
+        };
+      }
+
+      // Valid & Exploitable Transcription!
+      const validText = evalResult.cleanedText;
+
+      // Fetch org settings to check for custom handoff keywords
+      const { data: orgData } = await this.supabase
+        .from('organizations')
+        .select('settings')
+        .eq('id', targetOrgId)
+        .single();
+
+      const aiAgentConfig = orgData?.settings?.ai_agent_config || {};
+      const customKeywords = Array.isArray(aiAgentConfig.handoff_keywords)
+        ? aiAgentConfig.handoff_keywords
+        : ['humain', 'agent', 'remboursement', 'reclamation', 'conseiller'];
+
+      const isExplicitHumanDemand = SalesAgentService.shouldTriggerHandoff(validText, customKeywords);
+
+      if (isExplicitHumanDemand) {
+        // EXCEPTION : DEMANDE EXPLICITE D'HUMAIN ENREGISTRÉE DANS LA TRANSCRIPTION
+        await this.supabase.from('messages').insert({
+          organization_id: targetOrgId,
+          conversation_id: conversationId,
+          customer_id: customerId || null,
+          direction: 'INBOUND',
+          sender_type: 'CUSTOMER',
+          sender_id: event.senderPhone,
+          message_type: 'AUDIO',
+          content: validText,
+          media_url: storagePublicUrl,
           external_message_id: event.externalMessageId,
           status: 'RECEIVED',
           metadata: {
             transcription_status: 'COMPLETED',
-            transcription: transcribedText,
-          },
-        });
-      } else {
-        // Audio is inaudible or failed transcription -> Human Escalation Safeguard!
-        await this.supabase.from('messages').insert({
-          organization_id: targetOrgId,
-          conversation_id: conversationId,
-          customer_id: customerId || null,
-          direction: 'INBOUND',
-          sender_type: 'CUSTOMER',
-          sender_id: event.senderPhone,
-          message_type: 'AUDIO',
-          content: '[Message vocal inaudible / non transcrit]',
-          media_url: audioUrl || null,
-          external_message_id: event.externalMessageId,
-          status: 'RECEIVED',
-          metadata: {
-            transcription_status: 'INCOMPREHENSIBLE',
+            transcription: validText,
+            explicit_human_demand: true,
           },
         });
 
         await this.supabase.from('human_handoffs').insert({
           organization_id: targetOrgId,
           conversation_id: conversationId,
-          reason: 'Message vocal client inaudible ou impossible à transcrire',
+          reason: 'Demande explicite de conseiller humain dans message vocal',
           status: 'PENDING',
         });
 
@@ -351,31 +480,33 @@ export class WhatsAppApplicationService {
           .update({ conversation_mode: 'ESCALATED', assigned_agent: 'HUMAN' })
           .eq('id', conversationId);
 
-        const takeoverMsg = "Je vais vous mettre en relation avec un conseiller commercial pour mieux répondre à votre vocal.";
-        const sendRes = await this.providerAdapter.sendTextMessage(providerIdentity, {
-          toPhoneNumber: event.senderPhone,
-          messageText: takeoverMsg,
-        });
-
-        await this.supabase.from('messages').insert({
-          organization_id: targetOrgId,
-          conversation_id: conversationId,
-          direction: 'OUTBOUND',
-          sender_type: 'AI',
-          sender_id: 'SALES_AI',
-          message_type: 'TEXT',
-          content: takeoverMsg,
-          external_message_id: sendRes.status === 'SENT' ? sendRes.externalMessageId : null,
-          status: sendRes.status === 'SENT' ? 'SENT' : 'FAILED',
-        });
-
         return {
           status: 'SUCCESS',
-          message: 'Message vocal inaudible. Escaladé vers un conseiller humain sans hallucination IA.',
+          message: 'Demande explicite de conseiller humain détectée dans le vocal. Transféré vers un humain.',
           organizationId: targetOrgId,
           conversationId,
         };
       }
+
+      // Normal Commercial Intent
+      event.textBody = validText;
+      await this.supabase.from('messages').insert({
+        organization_id: targetOrgId,
+        conversation_id: conversationId,
+        customer_id: customerId || null,
+        direction: 'INBOUND',
+        sender_type: 'CUSTOMER',
+        sender_id: event.senderPhone,
+        message_type: 'AUDIO',
+        content: validText,
+        media_url: storagePublicUrl,
+        external_message_id: event.externalMessageId,
+        status: 'RECEIVED',
+        metadata: {
+          transcription_status: 'COMPLETED',
+          transcription: validText,
+        },
+      });
     } else {
       // Standard Inbound Customer Message (TEXT / IMAGE / etc.)
       const { error: msgErr } = await this.supabase.from('messages').insert({

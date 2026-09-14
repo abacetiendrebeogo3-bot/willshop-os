@@ -188,6 +188,16 @@ export class SalesAgentService {
     return defaultHaiku;
   }
 
+  static shouldTriggerHandoff(text: string, keywords?: string[]): boolean {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    const kwList = Array.isArray(keywords) && keywords.length > 0
+      ? keywords.map((k) => k.toLowerCase().trim())
+      : ['humain', 'agent', 'remboursement', 'reclamation', 'conseiller', 'directeur', 'responsable'];
+
+    return kwList.some((kw) => kw && lower.includes(kw));
+  }
+
   async generateResponse(
     customer: Customer,
     recentMessages: Message[],
@@ -237,7 +247,7 @@ export class SalesAgentService {
       ? aiAgentConfig.handoff_keywords.map((k: string) => k.toLowerCase().trim())
       : ['humain', 'agent', 'remboursement', 'reclamation', 'conseiller'];
 
-    if (customHandoffKeywords.some((kw) => kw && userMessageContent.toLowerCase().includes(kw))) {
+    if (SalesAgentService.shouldTriggerHandoff(userMessageContent, customHandoffKeywords)) {
       return {
         responseText: "Je vous mets immédiatement en relation avec un conseiller commercial humain de notre équipe.",
         triggerHandoff: true,
