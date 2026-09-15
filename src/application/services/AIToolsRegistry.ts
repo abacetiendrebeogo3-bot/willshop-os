@@ -190,6 +190,48 @@ export class AIToolsRegistry {
   ): Promise<{ result: any; triggerHandoff?: boolean }> {
     try {
       switch (name) {
+        case 'get_knowledge_base': {
+          const configuredFaqs = (aiAgentConfig?.faqs || []) as any[];
+          const configuredKb = (aiAgentConfig?.knowledge_base || []) as any[];
+          const configuredPolicies = (aiAgentConfig?.policies || []) as any[];
+
+          const activeFaqs = configuredFaqs.filter((f: any) => f.status === 'ACTIVE' || f.status === undefined || f.isActive === true);
+          const activeKb = configuredKb.filter((k: any) => k.status === 'ACTIVE' || k.status === undefined || k.isActive === true);
+          const activePol = configuredPolicies.filter((p: any) => p.status === 'ACTIVE' || p.status === undefined || p.isActive === true);
+
+          const allEntries = [
+            ...activeFaqs.map((f: any) => ({ category: f.category || 'FAQ', title: f.question, content: f.answer })),
+            ...activeKb.map((k: any) => ({ category: k.category || 'ENTREPRISE', title: k.title, content: k.content })),
+            ...activePol.map((p: any) => ({ category: 'POLITIQUES', title: p.title, content: p.content })),
+          ];
+
+          const reqCat = (args.category || '').toUpperCase().trim();
+          const query = (args.query || '').toLowerCase().trim();
+
+          const filtered = allEntries.filter((e) => {
+            const matchesCat = !reqCat || e.category.toUpperCase().includes(reqCat);
+            const matchesQuery = !query || e.title.toLowerCase().includes(query) || e.content.toLowerCase().includes(query);
+            return matchesCat && matchesQuery;
+          });
+
+          if (filtered.length === 0) {
+            return {
+              result: {
+                found: false,
+                entries: [],
+                message: "Aucune information correspondante trouvée dans la base de connaissances de l'entreprise.",
+              },
+            };
+          }
+
+          return {
+            result: {
+              found: true,
+              entries: filtered,
+            },
+          };
+        }
+
         case 'get_payment_methods': {
           const configuredMethods = (aiAgentConfig?.payment_methods || []) as any[];
           const activeMethods = configuredMethods.filter((pm: any) => pm.status === 'ACTIVE' || pm.status === undefined || pm.isActive === true);

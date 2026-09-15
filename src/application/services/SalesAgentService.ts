@@ -156,10 +156,22 @@ Pour le moment, aucun moyen de paiement n'est configuré.
 `;
     }
 
+    let faqsBlock = '';
+    const configuredFaqs = aiAgentConfig?.faqs || [];
+    const activeFaqs = Array.isArray(configuredFaqs) ? configuredFaqs.filter((f: any) => f.status === 'ACTIVE' || f.status === undefined || f.isActive === true) : [];
+    if (activeFaqs.length > 0) {
+      const faqsStr = activeFaqs.map((f: any) => `- [${f.category || 'FAQ'}] ${f.question}: ${f.answer}`).join('\n');
+      faqsBlock = `
+=== FOIRE AUX QUESTIONS & CONNAISSANCES MÉTIER (DB SSOT) ===
+${faqsStr}
+`;
+    }
+
     const rawContext = `=== CONTEXTE COMMERCIAL INTERNE WILLSHOP ===
 ${customerInfo}
 ${attributionBlock}
 ${paymentBlock}
+${faqsBlock}
 === PRODUITS AUTORISÉS (PRIX STRICTS - NE JAMAIS INVENTER) ===
 ${productsInfo || 'Aucun produit au catalogue.'}
 `;

@@ -695,6 +695,15 @@ export default function AIAgentsConfigPage() {
     setFaqForm({ question: "", answer: "", category: "Général", status: "ACTIVE" });
   };
 
+  const handleToggleFaqStatus = (id: string) => {
+    setFaqs((prev) =>
+      prev.map((f) =>
+        f.id === id ? { ...f, status: f.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE" } : f
+      )
+    );
+    showToast("✓ Statut FAQ mis à jour");
+  };
+
   const handleDeleteFaq = (id: string) => {
     if (!confirm("Voulez-vous vraiment supprimer cette FAQ ?")) return;
     setFaqs((prev) => prev.filter((f) => f.id !== id));
@@ -1480,38 +1489,76 @@ export default function AIAgentsConfigPage() {
                     </button>
                   </div>
 
-                  <div className="space-y-3">
-                    {faqs.map((faq) => (
-                      <div key={faq.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-white text-sm">❓ {faq.question}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-[#7B61FF]/20 text-[#7B61FF]">
-                              {faq.category}
-                            </span>
+                  {faqs.length === 0 ? (
+                    <div className="bg-[#181824] border border-[#282838] p-8 rounded-2xl text-center space-y-3">
+                      <div className="p-3 bg-cyan-500/10 text-cyan-400 rounded-full w-12 h-12 mx-auto flex items-center justify-center">
+                        <HelpCircle className="w-6 h-6" />
+                      </div>
+                      <h5 className="text-white font-bold text-sm">Aucune FAQ configurée</h5>
+                      <p className="text-xs text-gray-400 max-w-md mx-auto">
+                        Ajoutez les questions fréquentes de vos clients (ex: authenticité, garantie, retour, délai de livraison) pour permettre à l'Agent IA d'y répondre avec vos propres réponses officielles.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setEditingFaq(null);
+                          setFaqForm({ question: "", answer: "", category: "Général", status: "ACTIVE" });
+                          setShowFaqModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all shadow-md mt-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Ajouter une FAQ
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {faqs.map((faq) => (
+                        <div key={faq.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-sm">❓ {faq.question}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-[#7B61FF]/20 text-[#7B61FF]">
+                                {faq.category}
+                              </span>
+                              <button
+                                onClick={() => handleToggleFaqStatus(faq.id)}
+                                className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border transition-all ${
+                                  faq.status === "ACTIVE"
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                                    : "bg-gray-500/10 text-gray-400 border-gray-500/30 hover:bg-gray-500/20"
+                                }`}
+                              >
+                                {faq.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
+                            💬 {faq.answer}
+                          </p>
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              onClick={() => {
+                                setEditingFaq(faq);
+                                setFaqForm({ question: faq.question, answer: faq.answer, category: faq.category, status: faq.status });
+                                setShowFaqModal(true);
+                              }}
+                              className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteFaq(faq.id)}
+                              className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
-                        <p className="text-xs text-gray-300 bg-[#12121A] p-3 rounded-xl border border-white/5">
-                          💬 {faq.answer}
-                        </p>
-                        <div className="flex justify-end gap-2 pt-1">
-                          <button
-                            onClick={() => {
-                              setEditingFaq(faq);
-                              setFaqForm({ question: faq.question, answer: faq.answer, category: faq.category, status: faq.status });
-                              setShowFaqModal(true);
-                            }}
-                            className="p-1.5 bg-[#252535] text-gray-300 rounded-lg"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button onClick={() => handleDeleteFaq(faq.id)} className="p-1.5 bg-[#252535] text-red-400 rounded-lg">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2057,6 +2104,93 @@ export default function AIAgentsConfigPage() {
                   className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold"
                 >
                   Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1C: FAQ ADD / EDIT */}
+      {showFaqModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-cyan-400" />
+              {editingFaq ? "Modifier la FAQ" : "Nouvelle Question Fréquente (FAQ)"}
+            </h3>
+
+            <form onSubmit={handleSaveFaq} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Question posée par les clients *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Vos produits sont-ils authentiques ? Quels sont les délais de livraison ?"
+                  value={faqForm.question}
+                  onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Réponse officielle de l'entreprise *
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder="Ex: Oui, tous nos produits sont 100% officiels avec garantie de satisfaction..."
+                  value={faqForm.answer}
+                  onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-sans"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Catégorie</label>
+                  <select
+                    value={faqForm.category}
+                    onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  >
+                    <option value="Général">Général</option>
+                    <option value="Produit & Authenticité">Produit & Authenticité</option>
+                    <option value="Livraison">Livraison</option>
+                    <option value="Paiement & Facturation">Paiement & Facturation</option>
+                    <option value="Garantie & Retour">Garantie & Retour</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Statut</label>
+                  <select
+                    value={faqForm.status}
+                    onChange={(e) => setFaqForm({ ...faqForm, status: e.target.value as any })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  >
+                    <option value="ACTIVE">Actif (Utilisé par l'Agent IA)</option>
+                    <option value="ARCHIVED">Inactif / Archivé (Masqué de l'Agent)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFaqModal(false)}
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold"
+                >
+                  Enregistrer la FAQ
                 </button>
               </div>
             </form>
