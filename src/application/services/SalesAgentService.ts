@@ -312,7 +312,9 @@ export class SalesAgentService {
     const faqs = (aiAgentConfig?.faqs || []).filter((f: any) => f.status !== 'ARCHIVED');
     const policies = (aiAgentConfig?.policies || []).filter((p: any) => p.status !== 'INACTIVE');
     const knowledgeBase = (aiAgentConfig?.knowledge_base || []).filter((k: any) => k.status !== 'ARCHIVED');
-    const testimonials = (aiAgentConfig?.testimonials || []).filter((t: any) => t.status !== 'ARCHIVED');
+    const testimonials = (aiAgentConfig?.testimonials || []).filter(
+      (t: any) => t.status !== 'ARCHIVED' && t.status !== 'INACTIVE' && t.isPublic !== false && t.consentStatus !== 'NOT_AUTHORIZED'
+    );
 
     // Dynamic Company Prompt (NO hardcoded fallbacks like Ouagadougou/Koulouba)
     let companyPrompt = '';

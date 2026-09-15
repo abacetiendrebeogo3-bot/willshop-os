@@ -539,7 +539,9 @@ export class AIToolsRegistry {
 
         case 'search_testimonials': {
           const testimonials = (aiAgentConfig?.testimonials || []) as any[];
-          const activeTestimonials = testimonials.filter((t: any) => t.status !== 'ARCHIVED' && t.status !== 'INACTIVE');
+          const activeTestimonials = testimonials.filter(
+            (t: any) => t.status !== 'ARCHIVED' && t.status !== 'INACTIVE' && t.isPublic !== false && t.consentStatus !== 'NOT_AUTHORIZED'
+          );
 
           if (activeTestimonials.length === 0) {
             return {

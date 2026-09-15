@@ -108,6 +108,9 @@ export interface TestimonialEntry {
   source: string;
   status: "ACTIVE" | "ARCHIVED";
   mediaUrl?: string;
+  storagePath?: string;
+  consentStatus?: "UNKNOWN" | "AUTHORIZED" | "NOT_AUTHORIZED";
+  isPublic?: boolean;
   notes?: string;
 }
 
@@ -248,6 +251,9 @@ export default function AIAgentsConfigPage() {
     source: string;
     status: "ACTIVE" | "ARCHIVED";
     mediaUrl: string;
+    storagePath: string;
+    consentStatus: "UNKNOWN" | "AUTHORIZED" | "NOT_AUTHORIZED";
+    isPublic: boolean;
     notes: string;
   }>({
     clientName: "",
@@ -257,8 +263,18 @@ export default function AIAgentsConfigPage() {
     source: "WhatsApp",
     status: "ACTIVE",
     mediaUrl: "",
+    storagePath: "",
+    consentStatus: "AUTHORIZED",
+    isPublic: true,
     notes: "",
   });
+
+  // Selected file & preview state for testimonial image upload
+  const [testimonialFile, setTestimonialFile] = useState<File | null>(null);
+  const [testimonialPreviewUrl, setTestimonialPreviewUrl] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
 
   // Real Products List for Selection
   const [catalogProducts, setCatalogProducts] = useState<any[]>([]);
@@ -753,64 +769,226 @@ export default function AIAgentsConfigPage() {
     showToast("🗑️ Politique supprimée");
   };
 
-  // --- TESTIMONIAL CRUD HANDLERS ---
-  const handleSaveTestimonial = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!testimonialForm.clientName.trim() || !testimonialForm.text.trim()) return;
+  // --- TESTIMONIAL CRUD & UPLOAD HANDLERS ---
+  const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+  const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 
-    if (editingTestimonial) {
-      setTestimonials((prev) =>
-        prev.map((t) =>
-          t.id === editingTestimonial.id
-            ? {
-                ...t,
-                clientName: testimonialForm.clientName.trim(),
-                text: testimonialForm.text.trim(),
-                productId: testimonialForm.productId || undefined,
-                date: testimonialForm.date,
-                source: testimonialForm.source,
-                status: testimonialForm.status,
-                mediaUrl: testimonialForm.mediaUrl.trim() || undefined,
-                notes: testimonialForm.notes.trim() || undefined,
-              }
-            : t
-        )
-      );
-      showToast("✓ Témoignage modifié");
-    } else {
-      const newTestimonial: TestimonialEntry = {
-        id: `testim-${Date.now()}`,
+  const handleTestimonialFileSelect = (file: File) => {
+    setImageUploadError(null);
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setImageUploadError("Format d'image invalide. Formats acceptés : JPG, PNG, WEBP.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      setImageUploadError(`Taille de fichier trop grande (${(file.size / (1024 * 1024)).toFixed(1)} MB). Maximum autorisé : 5 MB.`);
+      return;
+    }
+
+    setTestimonialFile(file);
+    const localUrl = URL.createObjectURL(file);
+    setTestimonialPreviewUrl(localUrl);
+  };
+
+  const handleRemoveTestimonialImage = () => {
+    setTestimonialFile(null);
+    setTestimonialPreviewUrl(null);
+    setImageUploadError(null);
+    setTestimonialForm((prev) => ({ ...prev, mediaUrl: "", storagePath: "" }));
+  };
+
+  const handleSaveTestimonial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!testimonialForm.clientName.trim() || !testimonialForm.text.trim()) {
+      showToast("Veuillez remplir les champs obligatoires (*)");
+      return;
+    }
+
+    setIsUploadingImage(true);
+    setImageUploadError(null);
+
+    try {
+      const supabase = createClient();
+      const targetOrgId = organizationId || "27f3fcc3-402b-4294-ae19-ee4e59ed4037";
+      const testimonialId = editingTestimonial ? editingTestimonial.id : `testim-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+      let finalMediaUrl = testimonialForm.mediaUrl;
+      let finalStoragePath = testimonialForm.storagePath;
+
+      // 1. Upload file if selected
+      if (testimonialFile) {
+        const cleanFileName = `${Date.now()}_${testimonialFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const storagePath = `${targetOrgId}/${testimonialId}/${cleanFileName}`;
+
+        let bucketName = "testimonial-images";
+        let uploadResult = await supabase.storage
+          .from(bucketName)
+          .upload(storagePath, testimonialFile, { contentType: testimonialFile.type, upsert: true });
+
+        if (uploadResult.error) {
+          console.warn("Upload to testimonial-images failed, trying product-images fallback:", uploadResult.error);
+          bucketName = "product-images";
+          uploadResult = await supabase.storage
+            .from(bucketName)
+            .upload(storagePath, testimonialFile, { contentType: testimonialFile.type, upsert: true });
+        }
+
+        if (uploadResult.error) {
+          setImageUploadError(`Échec de l'upload de l'image: ${uploadResult.error.message}`);
+          setIsUploadingImage(false);
+          return;
+        }
+
+        const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(storagePath);
+        finalMediaUrl = urlData?.publicUrl || "";
+
+        // Remove old storage file if replaced
+        if (testimonialForm.storagePath && testimonialForm.storagePath !== storagePath) {
+          try {
+            await supabase.storage.from("testimonial-images").remove([testimonialForm.storagePath]);
+            await supabase.storage.from("product-images").remove([testimonialForm.storagePath]);
+          } catch (cleanErr) {
+            console.warn("Error cleaning old image:", cleanErr);
+          }
+        }
+
+        finalStoragePath = storagePath;
+      } else if (!testimonialForm.mediaUrl && testimonialForm.storagePath) {
+        // Image was removed by user
+        try {
+          await supabase.storage.from("testimonial-images").remove([testimonialForm.storagePath]);
+          await supabase.storage.from("product-images").remove([testimonialForm.storagePath]);
+        } catch (cleanErr) {
+          console.warn("Error cleaning removed image:", cleanErr);
+        }
+        finalMediaUrl = "";
+        finalStoragePath = "";
+      }
+
+      const updatedEntry: TestimonialEntry = {
+        id: testimonialId,
         clientName: testimonialForm.clientName.trim(),
         text: testimonialForm.text.trim(),
         productId: testimonialForm.productId || undefined,
         date: testimonialForm.date,
         source: testimonialForm.source,
         status: testimonialForm.status,
-        mediaUrl: testimonialForm.mediaUrl.trim() || undefined,
+        mediaUrl: finalMediaUrl.trim() || undefined,
+        storagePath: finalStoragePath.trim() || undefined,
+        consentStatus: testimonialForm.consentStatus,
+        isPublic: testimonialForm.isPublic,
         notes: testimonialForm.notes.trim() || undefined,
       };
-      setTestimonials((prev) => [newTestimonial, ...prev]);
-      showToast("✓ Nouveau témoignage ajouté");
-    }
 
-    setShowTestimonialModal(false);
-    setEditingTestimonial(null);
-    setTestimonialForm({
-      clientName: "",
-      text: "",
-      productId: "",
-      date: new Date().toISOString().split("T")[0],
-      source: "WhatsApp",
-      status: "ACTIVE",
-      mediaUrl: "",
-      notes: "",
-    });
+      let newTestimonialsList: TestimonialEntry[];
+      if (editingTestimonial) {
+        newTestimonialsList = testimonials.map((t) => (t.id === editingTestimonial.id ? updatedEntry : t));
+        showToast("✓ Témoignage modifié avec succès");
+      } else {
+        newTestimonialsList = [updatedEntry, ...testimonials];
+        showToast("✓ Nouveau témoignage ajouté avec succès");
+      }
+
+      setTestimonials(newTestimonialsList);
+
+      // Persist directly to DB
+      if (targetOrgId) {
+        const { data: currentOrg } = await supabase
+          .from("organizations")
+          .select("settings")
+          .eq("id", targetOrgId)
+          .single();
+
+        const existingSettings = currentOrg?.settings || {};
+        const updatedConfig = {
+          ...(existingSettings.ai_agent_config || {}),
+          testimonials: newTestimonialsList,
+        };
+
+        await supabase
+          .from("organizations")
+          .update({
+            settings: {
+              ...existingSettings,
+              ai_agent_config: updatedConfig,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", targetOrgId);
+      }
+
+      // Close modal & reset form
+      setShowTestimonialModal(false);
+      setEditingTestimonial(null);
+      setTestimonialFile(null);
+      setTestimonialPreviewUrl(null);
+      setTestimonialForm({
+        clientName: "",
+        text: "",
+        productId: "",
+        date: new Date().toISOString().split("T")[0],
+        source: "WhatsApp",
+        status: "ACTIVE",
+        mediaUrl: "",
+        storagePath: "",
+        consentStatus: "AUTHORIZED",
+        isPublic: true,
+        notes: "",
+      });
+    } catch (err: any) {
+      console.error("Save testimonial error:", err);
+      setImageUploadError(err.message || "Erreur lors de la sauvegarde");
+    } finally {
+      setIsUploadingImage(false);
+    }
   };
 
-  const handleDeleteTestimonial = (id: string) => {
+  const handleDeleteTestimonial = async (id: string) => {
     if (!confirm("Voulez-vous vraiment supprimer ce témoignage ?")) return;
-    setTestimonials((prev) => prev.filter((t) => t.id !== id));
+
+    const target = testimonials.find((t) => t.id === id);
+    if (target?.storagePath) {
+      try {
+        const supabase = createClient();
+        await supabase.storage.from("testimonial-images").remove([target.storagePath]);
+        await supabase.storage.from("product-images").remove([target.storagePath]);
+      } catch (cleanErr) {
+        console.warn("Error cleaning storage image on delete:", cleanErr);
+      }
+    }
+
+    const updatedList = testimonials.filter((t) => t.id !== id);
+    setTestimonials(updatedList);
     showToast("🗑️ Témoignage supprimé");
+
+    if (organizationId) {
+      try {
+        const supabase = createClient();
+        const { data: currentOrg } = await supabase
+          .from("organizations")
+          .select("settings")
+          .eq("id", organizationId)
+          .single();
+
+        const existingSettings = currentOrg?.settings || {};
+        const updatedConfig = {
+          ...(existingSettings.ai_agent_config || {}),
+          testimonials: updatedList,
+        };
+
+        await supabase
+          .from("organizations")
+          .update({
+            settings: {
+              ...existingSettings,
+              ai_agent_config: updatedConfig,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", organizationId);
+      } catch (err) {
+        console.error("Error updating DB after testimonial deletion:", err);
+      }
+    }
   };
 
   // Run Real Anthropic Agent Test
@@ -1635,6 +1813,9 @@ export default function AIAgentsConfigPage() {
                     <button
                       onClick={() => {
                         setEditingTestimonial(null);
+                        setTestimonialFile(null);
+                        setTestimonialPreviewUrl(null);
+                        setImageUploadError(null);
                         setTestimonialForm({
                           clientName: "",
                           text: "",
@@ -1643,6 +1824,9 @@ export default function AIAgentsConfigPage() {
                           source: "WhatsApp",
                           status: "ACTIVE",
                           mediaUrl: "",
+                          storagePath: "",
+                          consentStatus: "AUTHORIZED",
+                          isPublic: true,
                           notes: "",
                         });
                         setShowTestimonialModal(true);
@@ -1664,6 +1848,9 @@ export default function AIAgentsConfigPage() {
                       <button
                         onClick={() => {
                           setEditingTestimonial(null);
+                          setTestimonialFile(null);
+                          setTestimonialPreviewUrl(null);
+                          setImageUploadError(null);
                           setTestimonialForm({
                             clientName: "",
                             text: "",
@@ -1672,6 +1859,9 @@ export default function AIAgentsConfigPage() {
                             source: "WhatsApp",
                             status: "ACTIVE",
                             mediaUrl: "",
+                            storagePath: "",
+                            consentStatus: "AUTHORIZED",
+                            isPublic: true,
                             notes: "",
                           });
                           setShowTestimonialModal(true);
@@ -1693,15 +1883,22 @@ export default function AIAgentsConfigPage() {
                                 <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
                                 <span className="font-bold text-white text-sm">{t.clientName}</span>
                               </div>
-                              <span
-                                className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
-                                  t.status === "ACTIVE"
-                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                    : "bg-gray-500/10 text-gray-400 border-gray-500/30"
-                                }`}
-                              >
-                                {t.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                {t.consentStatus === "AUTHORIZED" && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                    ✓ Autorisé
+                                  </span>
+                                )}
+                                <span
+                                  className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border ${
+                                    t.status === "ACTIVE"
+                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                      : "bg-gray-500/10 text-gray-400 border-gray-500/30"
+                                  }`}
+                                >
+                                  {t.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
+                                </span>
+                              </div>
                             </div>
 
                             <p className="text-xs text-gray-200 bg-[#12121A] p-3 rounded-xl border border-white/5 italic">
@@ -1709,8 +1906,8 @@ export default function AIAgentsConfigPage() {
                             </p>
 
                             {t.mediaUrl && (
-                              <div className="rounded-xl overflow-hidden border border-slate-800 max-h-32">
-                                <img src={t.mediaUrl} alt="Capture témoignage" className="w-full h-32 object-cover" />
+                              <div className="rounded-xl overflow-hidden border border-slate-800 max-h-40 bg-black/40 flex items-center justify-center">
+                                <img src={t.mediaUrl} alt="Capture témoignage" className="w-full max-h-40 object-contain rounded-xl" />
                               </div>
                             )}
 
@@ -1722,6 +1919,9 @@ export default function AIAgentsConfigPage() {
                                 <button
                                   onClick={() => {
                                     setEditingTestimonial(t);
+                                    setTestimonialFile(null);
+                                    setTestimonialPreviewUrl(null);
+                                    setImageUploadError(null);
                                     setTestimonialForm({
                                       clientName: t.clientName,
                                       text: t.text,
@@ -1730,6 +1930,9 @@ export default function AIAgentsConfigPage() {
                                       source: t.source || "WhatsApp",
                                       status: t.status,
                                       mediaUrl: t.mediaUrl || "",
+                                      storagePath: t.storagePath || "",
+                                      consentStatus: t.consentStatus || "AUTHORIZED",
+                                      isPublic: t.isPublic !== undefined ? t.isPublic : true,
                                       notes: t.notes || "",
                                     });
                                     setShowTestimonialModal(true);
@@ -2274,15 +2477,134 @@ export default function AIAgentsConfigPage() {
                 </div>
               </div>
 
+              {/* IMAGE UPLOAD DROPZONE & PREVIEW */}
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">URL Image / Capture d'écran (optionnel)</label>
-                <input
-                  type="url"
-                  placeholder="https://..."
-                  value={testimonialForm.mediaUrl}
-                  onChange={(e) => setTestimonialForm({ ...testimonialForm, mediaUrl: e.target.value })}
-                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-mono"
-                />
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  📸 Image du témoignage / Capture d'écran (optionnel)
+                </label>
+
+                {imageUploadError && (
+                  <div className="mb-2 p-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{imageUploadError}</span>
+                  </div>
+                )}
+
+                {testimonialPreviewUrl || testimonialForm.mediaUrl ? (
+                  <div className="bg-[#181824] border border-[#282838] p-3 rounded-2xl space-y-3">
+                    <div className="relative rounded-xl overflow-hidden border border-[#282838] max-h-48 bg-black/40 flex items-center justify-center">
+                      <img
+                        src={testimonialPreviewUrl || testimonialForm.mediaUrl}
+                        alt="Aperçu témoignage"
+                        className="max-h-48 w-full object-contain rounded-xl"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-gray-300">
+                      <div className="truncate max-w-[200px] font-mono">
+                        {testimonialFile ? (
+                          <span>{testimonialFile.name} ({(testimonialFile.size / (1024 * 1024)).toFixed(2)} MB)</span>
+                        ) : (
+                          <span>Image sauvegardée</span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <label className="cursor-pointer px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-amber-400 rounded-lg text-xs font-semibold flex items-center gap-1">
+                          <Camera className="w-3.5 h-3.5" />
+                          Remplacer
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                              if (e.target.files && e.target.files[0]) {
+                                handleTestimonialFileSelect(e.target.files[0]);
+                              }
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleRemoveTestimonialImage}
+                          className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-xs font-semibold flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragOver(true);
+                    }}
+                    onDragLeave={() => setIsDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragOver(false);
+                      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                        handleTestimonialFileSelect(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    className={`border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer ${
+                      isDragOver
+                        ? "border-amber-400 bg-amber-500/10"
+                        : "border-[#282838] bg-[#181824] hover:border-amber-400/50 hover:bg-[#1f1f2e]"
+                    }`}
+                  >
+                    <label className="cursor-pointer block space-y-2">
+                      <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
+                        <Camera className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white">📷 Ajouter une image</p>
+                        <p className="text-xs text-gray-400 mt-1">Cliquez ou glissez-déposez une capture ou photo</p>
+                        <p className="text-[10px] text-gray-500 mt-1 font-mono">JPG, JPEG, PNG, WEBP — Max 5 MB</p>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleTestimonialFileSelect(e.target.files[0]);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              {/* CONSENT & AI VISIBILITY */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Autorisation Client (Consentement)</label>
+                  <select
+                    value={testimonialForm.consentStatus}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, consentStatus: e.target.value as any })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  >
+                    <option value="AUTHORIZED">🟢 Autorisé par le client</option>
+                    <option value="UNKNOWN">🟡 Non spécifié / Interne</option>
+                    <option value="NOT_AUTHORIZED">🔴 Non autorisé / Usage interne</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Visibilité Agent IA</label>
+                  <select
+                    value={testimonialForm.isPublic ? "public" : "private"}
+                    onChange={(e) => setTestimonialForm({ ...testimonialForm, isPublic: e.target.value === "public" })}
+                    className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  >
+                    <option value="public">🌐 Actif pour l'Agent IA</option>
+                    <option value="private">🔒 Inactif / Masqué</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
@@ -2295,9 +2617,17 @@ export default function AIAgentsConfigPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl text-xs font-bold"
+                  disabled={isUploadingImage}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black rounded-xl text-xs font-bold disabled:opacity-50 flex items-center gap-2"
                 >
-                  Enregistrer le témoignage
+                  {isUploadingImage ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Upload & Sauvegarde...
+                    </>
+                  ) : (
+                    "Enregistrer le témoignage"
+                  )}
                 </button>
               </div>
             </form>
