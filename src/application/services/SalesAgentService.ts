@@ -10,11 +10,26 @@ import { Message } from '../../domain/entities/WhatsAppCRMEntities';
 import { AIToolsRegistry, ToolExecutionContextOptions } from './AIToolsRegistry';
 import { AnthropicAIGateway } from '../../infrastructure/ai/AnthropicAIGateway';
 
+export interface ConversationFlowState {
+  intent?: 'DISCOVERY' | 'PURCHASE' | 'DELIVERY_CHECK' | 'CANCELLED';
+  productId?: string | null;
+  productName?: string | null;
+  productIdentified?: boolean;
+  quantity?: number;
+  neighborhood?: string | null;
+  deliveryVerified?: boolean;
+  deliveryFee?: number | null;
+  customerName?: string | null;
+  customerPhone?: string;
+  nextRequiredField?: 'PRODUCT' | 'NEIGHBORHOOD' | 'CONFIRMATION' | 'COMPLETED';
+}
+
 export interface SalesAgentContext {
   customer: Customer;
   recentMessages: Message[];
   availableProducts: Product[];
   tokenBudget: number;
+  flowState?: ConversationFlowState;
 }
 
 export interface SanitizerMetrics {
@@ -115,13 +130,28 @@ export class SalesAgentContextService {
     availableProducts: Product[],
     adAttribution?: any,
     tokenBudget = 1000,
-    aiAgentConfig?: any
+    aiAgentConfig?: any,
+    flowState?: ConversationFlowState
   ): string {
-    const customerInfo = `Client: ${customer.fullName} (${customer.phone}) - Statut: ${customer.status}`;
+    const customerInfo = `Client: ${customer.fullName || customer.firstName || 'Client WhatsApp'} (${customer.phone}) - Statut: ${customer.status}`;
 
     const productsInfo = availableProducts
       .map((p) => `- ID: ${p.id} | ${p.name} (SKU: ${p.sku}): ${p.sellingPrice} XOF (Prix fixe) ${p.minimumStock > 0 ? `| Stock: ${p.minimumStock}` : '| SUR COMMANDE'}`)
       .join('\n');
+
+    let flowStateBlock = '';
+    if (flowState) {
+      flowStateBlock = `
+=== ÉTAT DE PARCOURS COMMERCIAL (FLOW STATE) ===
+- Produit identifié : ${flowState.productName || 'Non identifié'} (ID: ${flowState.productId || 'N/A'})
+- Produit confirmé : ${flowState.productIdentified ? 'OUI' : 'NON'}
+- Quartier livraison : ${flowState.neighborhood || 'Non fourni'} (Vérifié: ${flowState.deliveryVerified ? 'OUI' : 'NON'})
+- Frais livraison : ${flowState.deliveryFee !== undefined && flowState.deliveryFee !== null ? `${flowState.deliveryFee} XOF` : 'Non calculé'}
+- Nom client : ${flowState.customerName || 'Non fourni (OPTIONNEL - NE JAMAIS DEMANDER AU CLIENT)'}
+- Téléphone client : ${flowState.customerPhone || customer.phone} (DÉJÀ CONNU ET VÉRIFIÉ)
+- Prochaine étape requise : ${flowState.nextRequiredField || 'NEIGHBORHOOD'}
+`;
+    }
 
     let attributionBlock = '';
     if (adAttribution && adAttribution.confidence !== 'UNKNOWN' && adAttribution.source !== 'UNKNOWN') {
@@ -169,6 +199,7 @@ ${faqsStr}
 
     const rawContext = `=== CONTEXTE COMMERCIAL INTERNE WILLSHOP ===
 ${customerInfo}
+${flowStateBlock}
 ${attributionBlock}
 ${paymentBlock}
 ${faqsBlock}
@@ -241,7 +272,8 @@ export class SalesAgentService {
     execOptions?: ToolExecutionContextOptions,
     adAttribution?: any,
     imageInput?: { base64: string; mimeType: string } | null,
-    imageAccessFailed?: boolean
+    imageAccessFailed?: boolean,
+    flowState?: ConversationFlowState
   ): Promise<{
     responseText: string;
     triggerHandoff: boolean;
@@ -265,7 +297,7 @@ export class SalesAgentService {
       };
     }
 
-    const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts, adAttribution, 1000, aiAgentConfig);
+    const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts, adAttribution, 1000, aiAgentConfig, flowState);
 
     // Isolate current incoming customer query vs past message history
     let historyMsgs: Message[] = [];
@@ -416,7 +448,15 @@ ${imageSendingRule}
 9. GESTION STRICTE DES QUARTIERS ET LIVRAISON :
    - Dès qu'un quartier de livraison est fourni par le client (ex: "Somgandé", "Benego", "Tampouy") OU vérifié avec succès, NE REDEMANDE PLUS JAMAIS "Vous êtes dans quel quartier ?" au client. Poursuis directement la confirmation de la commande.
 10. EXÉCUTION SYSTÉMATIQUE DE L'OUTIL DE LIVRAISON :
-   - Dès que le client nomme une localisation ou un quartier, appelle IMMÉDIATEMENT l'outil check_delivery_zone avec ce nom de quartier.`;
+    - Dès que le client nomme une localisation ou un quartier, appelle IMMÉDIATEMENT l'outil check_delivery_zone avec ce nom de quartier.
+11. SUPPRESSION TOTALE ET ABSOLUE DE LA DEMANDE DE NOM :
+    - LE NOM DU CLIENT EST STRICTEMENT OPTIONNEL.
+    - Le numéro WhatsApp entrant (${customer.phone}) sert d'identifiant unique et vérifié pour la commande.
+    - INTERDICTION STRICTE ET ABSOLUE de demander au client son nom (ni "Quel est votre nom ?", ni "Quel est votre nom complet ?", ni "Votre nom s'il vous plaît", ni "Pouvez-vous me donner votre nom ?").
+    - Ne bloque JAMAIS une commande en demandant le nom. Poursuis directement la confirmation de commande dès que le quartier et le produit sont connus.
+    - Si le client donne spontanément son nom (ex: "Je m'appelle Wilfried"), enregistre-le sans poser de question et ne redemande JAMAIS son nom.
+12. INTERDICTION STRICTE DE REDEMANDE D'INFORMATIONS DÉJÀ FOURNIES :
+    - Si le quartier, le produit, le nom ou le téléphone est déjà présent dans l'ÉTAT DE PARCOURS COMMERCIAL (FLOW STATE) ci-dessus, il est STRICTEMENT INTERDIT de poser la question à nouveau.`;
 
     // Construct structured message history for Anthropic API
     const structuredMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [

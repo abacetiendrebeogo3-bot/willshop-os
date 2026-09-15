@@ -796,19 +796,71 @@ export class WhatsAppApplicationService {
         createdAt: new Date(m.created_at),
       }));
 
+      const { data: realCustomer } = await this.supabase
+        .from('customers')
+        .select('*')
+        .eq('id', customerId)
+        .maybeSingle();
+
       const mockCustomer = {
         id: customerId,
         organizationId: targetOrgId,
-        firstName: event.senderName || 'Client',
-        lastName: event.senderPhone.slice(-4),
-        fullName: event.senderName || `Client ${event.senderPhone.slice(-4)}`,
-        phone: event.senderPhone,
-        city: 'Ouagadougou',
-        source: 'WHATSAPP',
+        firstName: realCustomer?.first_name || event.senderName || 'Client',
+        lastName: realCustomer?.last_name || event.senderPhone.slice(-4),
+        fullName: realCustomer?.full_name || (realCustomer?.first_name ? `${realCustomer.first_name} ${realCustomer.last_name || ''}`.trim() : event.senderName || `Client ${event.senderPhone.slice(-4)}`),
+        phone: realCustomer?.phone || event.senderPhone,
+        city: realCustomer?.city || 'Ouagadougou',
+        source: realCustomer?.source || 'WHATSAPP',
         status: 'ACTIVE' as const,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
+
+      // Load & update Conversation Flow State
+      const { data: convMetaData } = await this.supabase
+        .from('conversations')
+        .select('metadata')
+        .eq('id', conversationId)
+        .single();
+
+      const currentFlowState: any = convMetaData?.metadata?.flow_state || {
+        customerPhone: event.senderPhone,
+        nextRequiredField: 'PRODUCT',
+      };
+
+      // Spontaneous Name Detection & Persistence (e.g. "Je m'appelle Wilfried" or "Wilfried Tiendré")
+      const textRaw = (event.textBody || '').trim();
+      const namePatterns = [
+        /^je m'appelle ([a-zà-ÿ\s\-]+)/i,
+        /^mon nom est ([a-zà-ÿ\s\-]+)/i,
+        /^c'est ([a-zà-ÿ\s\-]+)$/i,
+      ];
+
+      for (const pat of namePatterns) {
+        const match = textRaw.match(pat);
+        if (match && match[1] && match[1].trim().length > 1) {
+          const extractedName = match[1].trim();
+          currentFlowState.customerName = extractedName;
+
+          const parts = extractedName.split(' ');
+          const fName = parts[0];
+          const lName = parts.slice(1).join(' ') || 'WhatsApp';
+
+          await this.supabase
+            .from('customers')
+            .update({ first_name: fName, last_name: lName, full_name: extractedName })
+            .eq('id', customerId);
+
+          mockCustomer.firstName = fName;
+          mockCustomer.lastName = lName;
+          mockCustomer.fullName = extractedName;
+          break;
+        }
+      }
+
+      if (realCustomer?.first_name && realCustomer.first_name !== 'Client' && !currentFlowState.customerName) {
+        currentFlowState.customerName = `${realCustomer.first_name} ${realCustomer.last_name || ''}`.trim();
+      }
 
       const { data: orgData } = await this.supabase
         .from('organizations')
@@ -926,7 +978,8 @@ export class WhatsAppApplicationService {
         execOptions,
         activeAttribution,
         imageInput,
-        imageAccessFailed
+        imageAccessFailed,
+        currentFlowState
       );
       const latencyMs = Date.now() - startTimeMs;
 
