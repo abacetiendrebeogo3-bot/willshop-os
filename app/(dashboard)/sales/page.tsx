@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { createClient } from "@/src/infrastructure/supabase/client";
 import { DataSourceBadge } from "@/components/ui/data-source-badge";
@@ -38,7 +38,49 @@ import {
   ChevronRight,
   MessageCircle,
   Radio,
+  Archive,
+  Trash2,
+  RotateCcw,
+  CheckSquare,
+  Square,
+  AlertTriangle,
+  Image as ImageIcon,
+  Mic,
+  FileDown,
+  Eye,
+  EyeOff,
 } from "lucide-react";
+
+// Helper: Format raw phone numbers for display (+226 77 XX XX XX)
+function formatPhoneNumber(phone?: string): string {
+  if (!phone) return "Numéro non spécifié";
+  const clean = phone.replace(/[^0-[#]+/g, "");
+  if (clean.length === 11 && clean.startsWith("226")) {
+    return `+226 ${clean.slice(3, 5)} ${clean.slice(5, 7)} ${clean.slice(7, 9)} ${clean.slice(9, 11)}`;
+  }
+  if (clean.length === 8) {
+    return `+226 ${clean.slice(0, 2)} ${clean.slice(2, 4)} ${clean.slice(4, 6)} ${clean.slice(6, 8)}`;
+  }
+  return phone.startsWith("+") ? phone : `+${phone}`;
+}
+
+// Helper: Format relative timestamp ("Il y a 2 min", "Il y a 3 h", "Hier", "12 sept.")
+function formatRelativeTime(dateStr?: string): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMin < 1) return "À l'instant";
+  if (diffMin < 60) return `Il y a ${diffMin} min`;
+  if (diffHours < 24) return `Il y a ${diffHours} h`;
+  if (diffDays === 1) return "Hier";
+  if (diffDays < 7) return `Il y a ${diffDays} j`;
+  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
 
 export default function SalesCRMPage() {
   const [activeTab, setActiveTab] = useState<"conversations" | "customers" | "agent_config" | "playground">(
@@ -50,28 +92,50 @@ export default function SalesCRMPage() {
   const [organizationName, setOrganizationName] = useState<string>("WILLShop OS");
   const [whatsappConnected, setWhatsappConnected] = useState<boolean>(false);
   const [whatsappNumberInfo, setWhatsappNumberInfo] = useState<any>(null);
+  const [whatsappNumbersList, setWhatsappNumbersList] = useState<any[]>([]);
   const [aiAgentEnabled, setAiAgentEnabled] = useState<boolean>(true);
 
-  // Collections
-  const [conversations, setConversations] = useState<any[]>([]);
+  // Collections & State
+  const [rawConversations, setRawConversations] = useState<any[]>([]);
   const [selectedConv, setSelectedConv] = useState<any | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
   const [customerNotes, setCustomerNotes] = useState<any[]>([]);
   const [customerOrders, setCustomerOrders] = useState<any[]>([]);
+  const [customerAttributions, setCustomerAttributions] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [handoffs, setHandoffs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSending, setIsSending] = useState<boolean>(false);
 
+  // Filters & Search State (Section 8, 9, 10)
+  const [statusTab, setStatusTab] = useState<
+    "ALL" | "ACTIVE" | "WAITING" | "HANDOFF" | "AI_ACTIVE" | "HUMAN_ACTIVE" | "ARCHIVED"
+  >("ACTIVE");
+  const [unreadOnly, setUnreadOnly] = useState<boolean>(false);
+  const [periodFilter, setPeriodFilter] = useState<"ALL" | "TODAY" | "7DAYS" | "30DAYS">("ALL");
+  const [whatsappFilter, setWhatsappFilter] = useState<string>("ALL");
+  const [sortOrder, setSortOrder] = useState<"NEWEST" | "OLDEST" | "UNREAD_FIRST" | "HANDOFF_FIRST">("NEWEST");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+
+  // Pagination State (Section 21)
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const pageSize = 20;
+
+  // Multi-Selection State (Section 6 & 7)
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set());
+
   // Modals visibility
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
   const [showNewCustomerModal, setShowNewCustomerModal] = useState<boolean>(false);
   const [showNewNoteModal, setShowNewNoteModal] = useState<boolean>(false);
-  const [showTagModal, setShowTagModal] = useState<boolean>(false);
-  const [showNewOrderModal, setShowNewOrderModal] = useState<boolean>(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState<boolean>(false);
+  const [showBulkArchiveModal, setShowBulkArchiveModal] = useState<boolean>(false);
+  const [targetDeleteIds, setTargetDeleteIds] = useState<string[]>([]);
+  const [isActionProcessing, setIsActionProcessing] = useState<boolean>(false);
 
   // Form states
   const [connectForm, setConnectForm] = useState({
@@ -92,9 +156,8 @@ export default function SalesCRMPage() {
 
   const [noteContent, setNoteContent] = useState<string>("");
   const [replyInput, setReplyInput] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Agent Config state (Full 6 Sections + Custom Instructions)
+  // Agent Config state
   const [agentConfig, setAgentConfig] = useState({
     name: "Sales AI WILLShop",
     presentation: "Assistant commercial virtuel dédié à votre écoute 24/7.",
@@ -157,6 +220,14 @@ export default function SalesCRMPage() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
+  // Debounce search query
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim().toLowerCase());
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchQuery]);
+
   // Load Real Data from Supabase
   const loadCRMData = async () => {
     setIsLoading(true);
@@ -218,6 +289,7 @@ export default function SalesCRMPage() {
         .eq("organization_id", targetOrgId)
         .order("created_at", { ascending: false });
 
+      setWhatsappNumbersList(numRows || []);
       if (numRows && numRows.length > 0) {
         setWhatsappConnected(true);
         setWhatsappNumberInfo(numRows[0]);
@@ -243,34 +315,42 @@ export default function SalesCRMPage() {
 
       setProducts(prodRows || []);
 
-      // 4. Fetch Conversations
+      // 4. Fetch Conversations with relations
       const { data: convRows } = await supabase
         .from("conversations")
-        .select("*, customers(first_name, last_name, phone, email)")
+        .select("*, customers(id, first_name, last_name, phone, email, address, city), whatsapp_numbers(id, display_name, phone_number)")
         .eq("organization_id", targetOrgId)
         .order("last_message_at", { ascending: false });
 
       const mappedConvs = (convRows || []).map((c) => {
         const custName = c.customers
           ? `${c.customers.first_name || ""} ${c.customers.last_name || ""}`.trim()
-          : "Prospect WhatsApp";
+          : "";
         const custPhone = c.customers?.phone || c.external_conversation_id || "Non spécifié";
 
         return {
           id: c.id,
           customerId: c.customer_id,
           customerName: custName || "Prospect WhatsApp",
+          rawCustomerName: custName,
           phoneNumber: custPhone,
-          status: c.status,
+          formattedPhone: formatPhoneNumber(custPhone),
+          status: c.status, // OPEN, PENDING, WAITING_CUSTOMER, WAITING_AGENT, CLOSED, ARCHIVED
+          conversationMode: c.conversation_mode || "AI_ACTIVE", // AI_ACTIVE, HUMAN_ACTIVE, ESCALATED, PAUSED
           assignedAgent: c.assigned_agent || "SALES_AI",
           unreadCount: c.unread_count || 0,
-          updatedAt: c.last_message_at ? new Date(c.last_message_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+          lastMessageAt: c.last_message_at || c.created_at,
+          updatedAt: c.last_message_at ? formatRelativeTime(c.last_message_at) : "",
+          whatsappNumberId: c.whatsapp_number_id,
+          whatsappDisplayName: c.whatsapp_numbers?.display_name || "WhatsApp Business",
+          whatsappPhoneNumber: c.whatsapp_numbers?.phone_number || "",
+          customerObj: c.customers || null,
         };
       });
 
-      setConversations(mappedConvs);
+      setRawConversations(mappedConvs);
       if (mappedConvs.length > 0 && !selectedConv) {
-        setSelectedConv(mappedConvs[0]);
+        handleSelectConversation(mappedConvs[0]);
       }
 
       // 5. Fetch Leads & Handoffs
@@ -292,6 +372,34 @@ export default function SalesCRMPage() {
     }
   };
 
+  // Open Conversation & Auto Mark as Read (Section 15)
+  const handleSelectConversation = async (conv: any) => {
+    setSelectedConv(conv);
+    if (conv.customerObj) {
+      loadCustomerFiche(conv.customerObj);
+    } else if (conv.customerId) {
+      const matchCust = customers.find((c) => c.id === conv.customerId);
+      if (matchCust) loadCustomerFiche(matchCust);
+    }
+
+    // Auto mark as read if unread_count > 0
+    if (conv.unreadCount > 0 && organizationId) {
+      try {
+        const supabase = createClient();
+        await supabase
+          .from("conversations")
+          .update({ unread_count: 0 })
+          .eq("id", conv.id);
+
+        setRawConversations((prev) =>
+          prev.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0 } : c))
+        );
+      } catch (err) {
+        console.error("Error marking conversation as read:", err);
+      }
+    }
+  };
+
   // Load Messages for Selected Conversation
   const loadMessagesForConv = async (convId: string) => {
     if (!convId) return;
@@ -308,9 +416,13 @@ export default function SalesCRMPage() {
           id: m.id,
           senderType: m.sender_type,
           direction: m.direction,
+          messageType: m.message_type || "TEXT",
           content: m.content || "",
+          mediaUrl: m.media_url || null,
+          mediaType: m.media_type || null,
           status: m.status,
           time: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          createdAt: m.created_at,
         }))
       );
     } catch (err) {
@@ -318,28 +430,34 @@ export default function SalesCRMPage() {
     }
   };
 
-  // Load Customer Fiche details (Notes & Orders)
+  // Load Customer Fiche details (Notes, Orders, Attributions) (Section 13)
   const loadCustomerFiche = async (customer: any) => {
     setSelectedCustomer(customer);
     if (!customer?.id || !organizationId) return;
 
     try {
       const supabase = createClient();
-      const { data: notes } = await supabase
-        .from("customer_notes")
-        .select("*")
-        .eq("customer_id", customer.id)
-        .order("created_at", { ascending: false });
+      const [{ data: notes }, { data: orders }, { data: attributions }] = await Promise.all([
+        supabase
+          .from("customer_notes")
+          .select("*")
+          .eq("customer_id", customer.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("orders")
+          .select("id, order_number, total_amount, status, created_at")
+          .eq("customer_id", customer.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("ad_attributions")
+          .select("*")
+          .eq("customer_id", customer.id)
+          .order("created_at", { ascending: false }),
+      ]);
 
       setCustomerNotes(notes || []);
-
-      const { data: orders } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("customer_id", customer.id)
-        .order("created_at", { ascending: false });
-
       setCustomerOrders(orders || []);
+      setCustomerAttributions(attributions || []);
     } catch (err) {
       console.error("Error loading customer fiche:", err);
     }
@@ -355,6 +473,162 @@ export default function SalesCRMPage() {
     }
   }, [selectedConv]);
 
+  // Filtered & Sorted Conversations Computation (Section 8, 9, 10)
+  const filteredConversations = useMemo(() => {
+    return rawConversations.filter((c) => {
+      // Status & Mode Filter Tabs
+      if (statusTab === "ACTIVE" && c.status === "ARCHIVED") return false;
+      if (statusTab === "ARCHIVED" && c.status !== "ARCHIVED") return false;
+      if (statusTab === "WAITING" && c.status !== "WAITING_CUSTOMER" && c.status !== "WAITING_AGENT") return false;
+      if (statusTab === "HANDOFF" && c.conversationMode !== "ESCALATED" && c.status !== "WAITING_AGENT") return false;
+      if (statusTab === "AI_ACTIVE" && c.conversationMode !== "AI_ACTIVE") return false;
+      if (statusTab === "HUMAN_ACTIVE" && c.conversationMode !== "HUMAN_ACTIVE") return false;
+
+      // Secondary Unread Filter
+      if (unreadOnly && c.unreadCount === 0) return false;
+
+      // Secondary Period Filter
+      if (periodFilter !== "ALL" && c.lastMessageAt) {
+        const msgDate = new Date(c.lastMessageAt).getTime();
+        const now = Date.now();
+        if (periodFilter === "TODAY" && now - msgDate > 24 * 60 * 60 * 1000) return false;
+        if (periodFilter === "7DAYS" && now - msgDate > 7 * 24 * 60 * 60 * 1000) return false;
+        if (periodFilter === "30DAYS" && now - msgDate > 30 * 24 * 60 * 60 * 1000) return false;
+      }
+
+      // Secondary WhatsApp Number Filter
+      if (whatsappFilter !== "ALL" && c.whatsappNumberId !== whatsappFilter) return false;
+
+      // Debounced Search (Name, Phone, WhatsApp Number)
+      if (debouncedSearch) {
+        const nameMatch = c.customerName.toLowerCase().includes(debouncedSearch);
+        const phoneMatch = c.phoneNumber.toLowerCase().includes(debouncedSearch);
+        const waMatch = (c.whatsappDisplayName || "").toLowerCase().includes(debouncedSearch);
+        if (!nameMatch && !phoneMatch && !waMatch) return false;
+      }
+
+      return true;
+    }).sort((a, b) => {
+      if (sortOrder === "NEWEST") return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+      if (sortOrder === "OLDEST") return new Date(a.lastMessageAt).getTime() - new Date(b.lastMessageAt).getTime();
+      if (sortOrder === "UNREAD_FIRST") return (b.unreadCount > 0 ? 1 : 0) - (a.unreadCount > 0 ? 1 : 0);
+      if (sortOrder === "HANDOFF_FIRST") return (b.conversationMode === "ESCALATED" ? 1 : 0) - (a.conversationMode === "ESCALATED" ? 1 : 0);
+      return 0;
+    });
+  }, [rawConversations, statusTab, unreadOnly, periodFilter, whatsappFilter, sortOrder, debouncedSearch]);
+
+  // Paginated Conversations (Section 21)
+  const paginatedConversations = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredConversations.slice(start, start + pageSize);
+  }, [filteredConversations, currentPage]);
+
+  const totalPages = Math.ceil(filteredConversations.length / pageSize) || 1;
+
+  // Multi-Selection Checkbox Handlers (Section 6 & 7)
+  const handleToggleSelectConv = (id: string) => {
+    setSelectedConvIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllInPage = () => {
+    if (selectedConvIds.size >= paginatedConversations.length && paginatedConversations.length > 0) {
+      setSelectedConvIds(new Set());
+    } else {
+      const next = new Set(paginatedConversations.map((c) => c.id));
+      setSelectedConvIds(next);
+    }
+  };
+
+  // ARCHIVE ACTIONS (Section 3 & 7)
+  const handleArchiveConversations = async (ids: string[]) => {
+    if (ids.length === 0 || !organizationId) return;
+    setIsActionProcessing(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .update({ status: "ARCHIVED", updated_at: new Date().toISOString() })
+        .in("id", ids);
+
+      if (error) throw error;
+
+      showToast(`📦 ${ids.length} conversation(s) archivée(s) avec succès.`);
+      setRawConversations((prev) =>
+        prev.map((c) => (ids.includes(c.id) ? { ...c, status: "ARCHIVED" } : c))
+      );
+      setSelectedConvIds(new Set());
+      setShowBulkArchiveModal(false);
+      if (selectedConv && ids.includes(selectedConv.id)) {
+        setSelectedConv((prev: any) => ({ ...prev, status: "ARCHIVED" }));
+      }
+    } catch (err: any) {
+      alert(`Erreur d'archivage : ${err.message}`);
+    } finally {
+      setIsActionProcessing(false);
+    }
+  };
+
+  // RESTORE ACTIONS (Section 3)
+  const handleRestoreConversations = async (ids: string[]) => {
+    if (ids.length === 0 || !organizationId) return;
+    setIsActionProcessing(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .update({ status: "OPEN", updated_at: new Date().toISOString() })
+        .in("id", ids);
+
+      if (error) throw error;
+
+      showToast(`↩️ ${ids.length} conversation(s) restaurée(s) dans la boîte active.`);
+      setRawConversations((prev) =>
+        prev.map((c) => (ids.includes(c.id) ? { ...c, status: "OPEN" } : c))
+      );
+      setSelectedConvIds(new Set());
+      if (selectedConv && ids.includes(selectedConv.id)) {
+        setSelectedConv((prev: any) => ({ ...prev, status: "OPEN" }));
+      }
+    } catch (err: any) {
+      alert(`Erreur de restauration : ${err.message}`);
+    } finally {
+      setIsActionProcessing(false);
+    }
+  };
+
+  // DELETE ACTIONS (Section 4 & 5 & 18)
+  const handleDeleteConversationsConfirmed = async () => {
+    if (targetDeleteIds.length === 0 || !organizationId) return;
+    setIsActionProcessing(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("conversations")
+        .delete()
+        .in("id", targetDeleteIds);
+
+      if (error) throw error;
+
+      showToast(`🗑️ ${targetDeleteIds.length} conversation(s) supprimée(s) définitivement. (Clients & commandes conservés)`);
+      setRawConversations((prev) => prev.filter((c) => !targetDeleteIds.includes(c.id)));
+      if (selectedConv && targetDeleteIds.includes(selectedConv.id)) {
+        setSelectedConv(null);
+      }
+      setSelectedConvIds(new Set());
+      setShowDeleteConfirmModal(false);
+      setTargetDeleteIds([]);
+    } catch (err: any) {
+      alert(`Erreur de suppression : ${err.message}`);
+    } finally {
+      setIsActionProcessing(false);
+    }
+  };
+
   // Handler: Toggle Conversation Mode (AI_ACTIVE <-> HUMAN_ACTIVE)
   const handleToggleConvMode = async (convId: string, currentMode: string) => {
     const nextMode = currentMode === "AI_ACTIVE" ? "HUMAN_ACTIVE" : "AI_ACTIVE";
@@ -366,7 +640,9 @@ export default function SalesCRMPage() {
         .eq("id", convId);
 
       showToast(nextMode === "AI_ACTIVE" ? "🟢 Agent IA réactivé pour cette discussion" : "👤 Main prise par le commercial humain");
-      await loadCRMData();
+      setRawConversations((prev) =>
+        prev.map((c) => (c.id === convId ? { ...c, conversationMode: nextMode } : c))
+      );
       if (selectedConv?.id === convId) {
         setSelectedConv((prev: any) => ({ ...prev, conversationMode: nextMode }));
       }
@@ -670,10 +946,10 @@ export default function SalesCRMPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold tracking-tight text-white flex items-center gap-3">
-                Ventes, CRM & WhatsApp Agent IA
+                Boîte de Réception Ventes & CRM
               </h1>
               <p className="text-sm text-gray-400 mt-1">
-                Le hub commercial de {organizationName} — Connecte WhatsApp, l&apos;Agent IA et la gestion client.
+                Centre de messagerie e-commerce de {organizationName} — Organisez vos échanges WhatsApp et pilotez vos ventes.
               </p>
             </div>
           </div>
@@ -681,7 +957,7 @@ export default function SalesCRMPage() {
 
         <div className="flex flex-wrap items-center gap-3">
           <DataSourceBadge
-            type={conversations.length > 0 ? "DATABASE" : "EMPTY_STATE"}
+            type={rawConversations.length > 0 ? "DATABASE" : "EMPTY_STATE"}
             label="WHATSAPP CRM"
           />
           <Link
@@ -689,7 +965,7 @@ export default function SalesCRMPage() {
             className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-sm font-medium rounded-xl transition-all"
           >
             <MessageSquare className="w-4 h-4" />
-            💬 WhatsApp & Agent IA Hub
+            💬 WhatsApp Hub
           </Link>
 
           <button
@@ -726,145 +1002,66 @@ export default function SalesCRMPage() {
         </div>
       </div>
 
-      {/* ÉTAT COMMERCIAL GRANULAR STATUS BAR (SECTION 13) */}
-      <div className="bg-[#12121A] border border-[#181824] p-5 rounded-2xl space-y-4 shadow-sm">
-        <div className="flex items-center justify-between border-b border-[#181824] pb-3">
-          <h2 className="font-bold text-white text-sm flex items-center gap-2">
-            <Radio className="w-4 h-4 text-emerald-400" /> ÉTAT COMMERCIAL & INTÉGRATION WHATSAPP
-          </h2>
-          <span className="text-[10px] font-mono text-gray-500">LIVE ENGINE STATUS</span>
+      {/* METRICS CARDS & INBOX STATUS SUMMARY */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] font-mono text-gray-400 block">TOTAL CONVERSATIONS</span>
+          <p className="text-2xl font-extrabold text-white font-mono">{rawConversations.length}</p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 font-mono text-xs">
-          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
-            <span className="text-gray-400 text-[10px] block">WHATSAPP</span>
-            <span className={`font-bold ${whatsappConnected ? "text-emerald-400" : "text-amber-400"}`}>
-              {whatsappConnected ? "🟢 Connecté" : "🟡 Non configuré"}
-            </span>
-          </div>
-
-          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
-            <span className="text-gray-400 text-[10px] block">WEBHOOK</span>
-            <span className="font-bold text-emerald-400">🟢 Opérationnel</span>
-          </div>
-
-          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
-            <span className="text-gray-400 text-[10px] block">AGENT IA</span>
-            <span className={`font-bold ${aiAgentEnabled ? "text-[#7B61FF]" : "text-gray-500"}`}>
-              {aiAgentEnabled ? "🟢 Actif" : "⚪ Désactivé"}
-            </span>
-          </div>
-
-          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
-            <span className="text-gray-400 text-[10px] block">CONVERSATIONS</span>
-            <span className="font-bold text-white">{conversations.length}</span>
-          </div>
-
-          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
-            <span className="text-gray-400 text-[10px] block">CLIENTS</span>
-            <span className="font-bold text-white">{customers.length}</span>
-          </div>
-
-          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
-            <span className="text-gray-400 text-[10px] block">COMMANDES</span>
-            <span className="font-bold text-white">{customerOrders.length}</span>
-          </div>
-
-          <div className="bg-[#0A0A14] p-3 rounded-xl border border-[#181824]">
-            <span className="text-gray-400 text-[10px] block">PRODUITS</span>
-            <span className="font-bold text-white">{products.length}</span>
-          </div>
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] font-mono text-emerald-400 block">ACTIVES / OUVERTES</span>
+          <p className="text-2xl font-extrabold text-emerald-400 font-mono">
+            {rawConversations.filter((c) => c.status !== "ARCHIVED").length}
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 pt-1">
-          <button
-            onClick={() => setActiveTab("conversations")}
-            className="px-4 py-2 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
-          >
-            <MessageSquare className="w-4 h-4 text-[#7B61FF]" /> 💬 Voir les conversations
-          </button>
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] font-mono text-blue-400 block">EN ATTENTE</span>
+          <p className="text-2xl font-extrabold text-blue-400 font-mono">
+            {rawConversations.filter((c) => (c.status === "WAITING_CUSTOMER" || c.status === "WAITING_AGENT") && c.status !== "ARCHIVED").length}
+          </p>
+        </div>
 
-          <button
-            onClick={() => setActiveTab("playground")}
-            className="px-4 py-2 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
-          >
-            <Play className="w-4 h-4 text-emerald-400" /> 🤖 Tester l&apos;Agent
-          </button>
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] font-mono text-amber-400 block">HANDOFFS HUMAINS</span>
+          <p className="text-2xl font-extrabold text-amber-400 font-mono">
+            {rawConversations.filter((c) => c.conversationMode === "ESCALATED" && c.status !== "ARCHIVED").length}
+          </p>
+        </div>
 
-          <button
-            onClick={() => setActiveTab("agent_config")}
-            className="px-4 py-2 bg-[#181824] hover:bg-[#242436] text-white text-xs font-medium rounded-xl border border-[#242436] transition-all flex items-center gap-2"
-          >
-            <Settings className="w-4 h-4 text-[#7B61FF]" /> ⚙️ Configurer
-          </button>
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] font-mono text-gray-500 block">ARCHIVÉES</span>
+          <p className="text-2xl font-extrabold text-gray-400 font-mono">
+            {rawConversations.filter((c) => c.status === "ARCHIVED").length}
+          </p>
+        </div>
 
-          <Link
-            href="/whatsapp"
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-md flex items-center gap-2"
-          >
-            <Phone className="w-4 h-4" /> 🔗 Gérer WhatsApp
-          </Link>
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] font-mono text-[#7B61FF] block">CLIENTS CRM</span>
+          <p className="text-2xl font-extrabold text-[#7B61FF] font-mono">{customers.length}</p>
         </div>
       </div>
 
-      {/* CRM METRICS CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <div className="flex items-center justify-between text-xs text-gray-400 font-mono">
-            <span>CONVERSATIONS ACTIVES</span>
-            <MessageCircle className="w-4 h-4 text-[#7B61FF]" />
-          </div>
-          <p className="text-3xl font-extrabold text-white font-mono">{conversations.length}</p>
-          <p className="text-[11px] text-gray-400">Canal WhatsApp direct</p>
-        </div>
-
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <div className="flex items-center justify-between text-xs text-gray-400 font-mono">
-            <span>CLIENTS CRM ENREGISTRÉS</span>
-            <User className="w-4 h-4 text-emerald-400" />
-          </div>
-          <p className="text-3xl font-extrabold text-white font-mono">{customers.length}</p>
-          <p className="text-[11px] text-gray-400">Base clients réels</p>
-        </div>
-
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <div className="flex items-center justify-between text-xs text-gray-400 font-mono">
-            <span>HANDOFFS HUMAINS</span>
-            <UserCheck className="w-4 h-4 text-amber-400" />
-          </div>
-          <p className="text-3xl font-extrabold text-white font-mono">{handoffs.length}</p>
-          <p className="text-[11px] text-gray-400">Demandes de conseillers</p>
-        </div>
-
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <div className="flex items-center justify-between text-xs text-gray-400 font-mono">
-            <span>PRODUITS AU CATALOGUE</span>
-            <Package className="w-4 h-4 text-blue-400" />
-          </div>
-          <p className="text-3xl font-extrabold text-white font-mono">{products.length}</p>
-          <p className="text-[11px] text-gray-400">Disponibles pour l&apos;Agent IA</p>
-        </div>
-      </div>
-
-      {/* NAVIGATION TABS & SUB-NAV (SECTION 10) */}
+      {/* NAVIGATION TABS & SUB-NAV */}
       <div className="flex items-center gap-2 border-b border-[#181824] pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab("conversations")}
           className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "conversations"
-              ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30"
+              ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30 font-bold"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
           }`}
         >
           <MessageSquare className="w-4 h-4" />
-          Conversations ({conversations.length})
+          Boîte de Réception ({filteredConversations.length})
         </button>
 
         <button
           onClick={() => setActiveTab("customers")}
           className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "customers"
-              ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30"
+              ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30 font-bold"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
           }`}
         >
@@ -885,30 +1082,14 @@ export default function SalesCRMPage() {
           className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all text-gray-400 hover:text-white hover:bg-[#12121A] whitespace-nowrap"
         >
           <TrendingUp className="w-4 h-4 text-amber-400" />
-          Relances (Dry Run)
-        </Link>
-
-        <Link
-          href="/delivery"
-          className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all text-gray-400 hover:text-white hover:bg-[#12121A] whitespace-nowrap"
-        >
-          <Package className="w-4 h-4 text-blue-400" />
-          Livraisons
-        </Link>
-
-        <Link
-          href="/whatsapp"
-          className="flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all text-gray-400 hover:text-white hover:bg-[#12121A] whitespace-nowrap"
-        >
-          <Phone className="w-4 h-4 text-emerald-400" />
-          WhatsApp Hub
+          Relances Commerciales
         </Link>
 
         <button
           onClick={() => setActiveTab("agent_config")}
           className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "agent_config"
-              ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30"
+              ? "bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30 font-bold"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
           }`}
         >
@@ -920,7 +1101,7 @@ export default function SalesCRMPage() {
           onClick={() => setActiveTab("playground")}
           className={`flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-xl transition-all whitespace-nowrap ${
             activeTab === "playground"
-              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold"
               : "text-gray-400 hover:text-white hover:bg-[#12121A]"
           }`}
         >
@@ -929,174 +1110,600 @@ export default function SalesCRMPage() {
         </button>
       </div>
 
-      {/* TAB CONTENT: CONVERSATIONS */}
+      {/* TAB CONTENT: CONVERSATIONS INBOX */}
       {activeTab === "conversations" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[600px]">
-          {/* Left Col: Conversation List */}
-          <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 flex flex-col justify-between overflow-y-auto">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-[#181824] pb-3">
-                <h3 className="font-bold text-xs text-gray-300 uppercase font-mono tracking-wider">
-                  Boîte de Réception
-                </h3>
-                <span className="text-[10px] font-mono text-gray-400">{conversations.length} Active(s)</span>
+        <div className="space-y-4">
+          {/* SEARCH & FILTERING BAR (SECTION 8, 9, 10) */}
+          <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-3">
+            {/* Top Row: Quick Filter Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { key: "ACTIVE", label: "🟢 Actives", count: rawConversations.filter((c) => c.status !== "ARCHIVED").length },
+                  { key: "WAITING", label: "🔵 En attente", count: rawConversations.filter((c) => (c.status === "WAITING_CUSTOMER" || c.status === "WAITING_AGENT") && c.status !== "ARCHIVED").length },
+                  { key: "HANDOFF", label: "🔴 Handoff humain", count: rawConversations.filter((c) => c.conversationMode === "ESCALATED" && c.status !== "ARCHIVED").length },
+                  { key: "AI_ACTIVE", label: "🤖 IA active", count: rawConversations.filter((c) => c.conversationMode === "AI_ACTIVE" && c.status !== "ARCHIVED").length },
+                  { key: "HUMAN_ACTIVE", label: "👤 Humain", count: rawConversations.filter((c) => c.conversationMode === "HUMAN_ACTIVE" && c.status !== "ARCHIVED").length },
+                  { key: "ARCHIVED", label: "⚪ Archivées", count: rawConversations.filter((c) => c.status === "ARCHIVED").length },
+                  { key: "ALL", label: "Toutes", count: rawConversations.length },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => {
+                      setStatusTab(tab.key as any);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                      statusTab === tab.key
+                        ? "bg-[#7B61FF] text-white shadow-md"
+                        : "bg-[#181824] text-gray-300 hover:bg-[#242436]"
+                    }`}
+                  >
+                    <span>{tab.label}</span>
+                    <span className="px-1.5 py-0.2 bg-black/30 rounded-full font-mono text-[10px]">
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
               </div>
 
-              {isLoading ? (
-                <div className="p-8 text-center text-gray-400 flex flex-col items-center gap-2">
-                  <Loader2 className="w-6 h-6 animate-spin text-[#7B61FF]" />
-                  <span className="text-xs">Chargement des messages...</span>
-                </div>
-              ) : conversations.length === 0 ? (
-                <div className="text-center py-12 space-y-2">
-                  <Inbox className="w-8 h-8 mx-auto text-gray-600" />
-                  <p className="text-xs text-gray-400 font-medium">Aucune conversation enregistrée</p>
-                  <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
-                    Les messages WhatsApp reçus sur votre numéro connecté apparaîtront ici.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {conversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      onClick={() => setSelectedConv(conv)}
-                      className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
-                        selectedConv?.id === conv.id
-                          ? "bg-[#7B61FF]/10 border-[#7B61FF]/40"
-                          : "bg-[#0A0A10] border-[#181824] hover:border-[#1E1E2C]"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs text-white">{conv.customerName}</span>
-                        <span className="text-[10px] font-mono text-gray-400">{conv.updatedAt}</span>
-                      </div>
-                      <p className="text-xs text-gray-400 truncate mt-1">{conv.phoneNumber}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* Unread Toggle */}
+              <button
+                onClick={() => setUnreadOnly(!unreadOnly)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                  unreadOnly
+                    ? "bg-blue-500/20 text-blue-400 border-blue-500/40"
+                    : "bg-[#181824] text-gray-400 border-[#242436] hover:text-white"
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${unreadOnly ? "bg-blue-400 animate-ping" : "bg-gray-500"}`} />
+                Non lues uniquement
+              </button>
             </div>
+
+            {/* Bottom Row: Search, Period, WhatsApp Number & Sorting */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 pt-1 border-t border-[#181824]">
+              {/* Search Bar (Debounced) */}
+              <div className="relative md:col-span-2">
+                <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="🔎 Rechercher par nom, téléphone (+226...), message..."
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl pl-9 pr-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-[#7B61FF]"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-2.5 text-gray-400 hover:text-white"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Period Filter */}
+              <div>
+                <select
+                  value={periodFilter}
+                  onChange={(e) => setPeriodFilter(e.target.value as any)}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2 text-xs text-white outline-none focus:border-[#7B61FF]"
+                >
+                  <option value="ALL">🗓️ Toutes les dates</option>
+                  <option value="TODAY">Aujourd&apos;hui (24h)</option>
+                  <option value="7DAYS">7 derniers jours</option>
+                  <option value="30DAYS">30 derniers jours</option>
+                </select>
+              </div>
+
+              {/* Sorting */}
+              <div>
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as any)}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-2 text-xs text-white outline-none focus:border-[#7B61FF]"
+                >
+                  <option value="NEWEST">⚡ Plus récent d&apos;abord</option>
+                  <option value="OLDEST">⏳ Plus ancien d&apos;abord</option>
+                  <option value="UNREAD_FIRST">🔵 Non lus en premier</option>
+                  <option value="HANDOFF_FIRST">🔴 Handoffs en premier</option>
+                </select>
+              </div>
+            </div>
+
+            {/* BULK ACTION BAR (SECTION 6 & 7) */}
+            {selectedConvIds.size > 0 && (
+              <div className="bg-[#7B61FF]/10 border border-[#7B61FF]/40 p-3 rounded-xl flex items-center justify-between animate-fade-in">
+                <div className="flex items-center gap-2 text-xs font-bold text-white">
+                  <CheckSquare className="w-4 h-4 text-[#7B61FF]" />
+                  <span>{selectedConvIds.size} conversation(s) sélectionnée(s)</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleArchiveConversations(Array.from(selectedConvIds))}
+                    disabled={isActionProcessing}
+                    className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-amber-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all"
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    Archiver sélection
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setTargetDeleteIds(Array.from(selectedConvIds));
+                      setShowDeleteConfirmModal(true);
+                    }}
+                    disabled={isActionProcessing}
+                    className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Supprimer sélection
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedConvIds(new Set())}
+                    className="p-1.5 text-gray-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Right Col: Active Conversation Stream */}
-          <div className="lg:col-span-2 bg-[#12121A] border border-[#1E1E2C] rounded-2xl flex flex-col justify-between p-6">
-            {selectedConv ? (
-              <>
-                <div className="border-b border-[#181824] pb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#7B61FF]/20 border border-[#7B61FF]/40 flex items-center justify-center font-bold text-[#7B61FF] text-sm">
-                      {selectedConv.customerName.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-sm text-white">{selectedConv.customerName}</h3>
-                      <p className="text-xs text-gray-400 flex items-center gap-2 font-mono">
-                        <Phone className="w-3.5 h-3.5 text-gray-500" /> {selectedConv.phoneNumber}
-                      </p>
-                    </div>
-                  </div>
-
+          {/* MAIN 2-COLUMNS INBOX WORKSPACE */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[620px]">
+            {/* Left Column: Conversation List */}
+            <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 flex flex-col justify-between space-y-3">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between border-b border-[#181824] pb-2 font-mono text-xs text-gray-400">
                   <div className="flex items-center gap-2">
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono ${
-                        selectedConv.conversationMode === "HUMAN_ACTIVE"
-                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/30"
-                          : selectedConv.conversationMode === "ESCALATED"
-                          ? "bg-red-500/10 text-red-400 border border-red-500/30"
-                          : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
-                      }`}
-                    >
-                      {selectedConv.conversationMode || "AI_ACTIVE"}
-                    </span>
-
-                    {selectedConv.conversationMode === "HUMAN_ACTIVE" ? (
-                      <button
-                        onClick={() => handleToggleConvMode(selectedConv.id, selectedConv.conversationMode)}
-                        className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5"
-                      >
-                        <Bot className="w-3.5 h-3.5" />
-                        Reprendre avec l&apos;IA
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleToggleConvMode(selectedConv.id, selectedConv.conversationMode)}
-                        className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5"
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        Prendre la main
-                      </button>
-                    )}
-
                     <button
-                      onClick={handleTriggerAiResponse}
-                      disabled={isSending}
-                      className="px-3 py-1.5 bg-[#7B61FF]/20 hover:bg-[#7B61FF]/30 text-[#7B61FF] border border-[#7B61FF]/30 rounded-xl text-xs font-medium flex items-center gap-1.5"
+                      onClick={handleSelectAllInPage}
+                      className="text-gray-400 hover:text-white flex items-center gap-1 text-[11px]"
                     >
-                      <Bot className="w-3.5 h-3.5" />
-                      Réponse IA
+                      {selectedConvIds.size >= paginatedConversations.length && paginatedConversations.length > 0 ? (
+                        <CheckSquare className="w-4 h-4 text-[#7B61FF]" />
+                      ) : (
+                        <Square className="w-4 h-4 text-gray-500" />
+                      )}
+                      <span>Tout élec.</span>
+                    </button>
+                  </div>
+                  <span>{filteredConversations.length} Résultat(s)</span>
+                </div>
+
+                {isLoading ? (
+                  <div className="p-12 text-center text-gray-400 flex flex-col items-center gap-2">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#7B61FF]" />
+                    <span className="text-xs">Chargement de la boîte de réception...</span>
+                  </div>
+                ) : filteredConversations.length === 0 ? (
+                  <div className="text-center py-16 space-y-2">
+                    <Inbox className="w-10 h-10 mx-auto text-gray-600" />
+                    <p className="text-xs text-gray-300 font-bold">Aucune conversation trouvée</p>
+                    <p className="text-[11px] text-gray-500 max-w-xs mx-auto">
+                      {statusTab === "ARCHIVED"
+                        ? "Vous n'avez actuellement aucune conversation archivée."
+                        : "Aucun message ne correspond à vos filtres de recherche."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                    {paginatedConversations.map((conv) => {
+                      const isSelected = selectedConvIds.has(conv.id);
+                      const isCurrentActive = selectedConv?.id === conv.id;
+
+                      return (
+                        <div
+                          key={conv.id}
+                          className={`p-3.5 rounded-xl border transition-all relative group ${
+                            isCurrentActive
+                              ? "bg-[#7B61FF]/15 border-[#7B61FF]/50 shadow-md"
+                              : isSelected
+                              ? "bg-[#181824] border-[#7B61FF]/30"
+                              : "bg-[#0A0A10] border-[#181824] hover:border-[#282838]"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* Checkbox */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSelectConv(conv.id);
+                              }}
+                              className="mt-1 text-gray-400 hover:text-white"
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="w-4 h-4 text-[#7B61FF]" />
+                              ) : (
+                                <Square className="w-4 h-4 text-gray-600" />
+                              )}
+                            </button>
+
+                            {/* Card Content Click */}
+                            <div
+                              onClick={() => handleSelectConversation(conv)}
+                              className="flex-1 min-w-0 cursor-pointer space-y-1.5"
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1.5 truncate">
+                                  {conv.unreadCount > 0 && (
+                                    <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 animate-pulse" />
+                                  )}
+                                  <span className="font-bold text-xs text-white truncate">
+                                    {conv.rawCustomerName ? conv.rawCustomerName : conv.formattedPhone}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-mono text-gray-400 shrink-0">
+                                  {conv.updatedAt}
+                                </span>
+                              </div>
+
+                              {/* Phone & Secondary WhatsApp Line */}
+                              <div className="flex items-center justify-between text-[11px] text-gray-400 font-mono">
+                                <span>{conv.formattedPhone}</span>
+                                {conv.whatsappDisplayName && (
+                                  <span className="text-[9px] px-1.5 py-0.2 bg-gray-800 text-gray-300 rounded">
+                                    {conv.whatsappDisplayName}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Badges & Mode Row */}
+                              <div className="flex items-center justify-between pt-1">
+                                <span
+                                  className={`text-[9px] px-2 py-0.5 rounded-md font-mono font-bold border ${
+                                    conv.status === "ARCHIVED"
+                                      ? "bg-gray-500/10 text-gray-400 border-gray-500/30"
+                                      : conv.conversationMode === "HUMAN_ACTIVE"
+                                      ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                      : conv.conversationMode === "ESCALATED"
+                                      ? "bg-red-500/10 text-red-400 border-red-500/30"
+                                      : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  }`}
+                                >
+                                  {conv.status === "ARCHIVED"
+                                    ? "⚪ Archivé"
+                                    : conv.conversationMode === "HUMAN_ACTIVE"
+                                    ? "👤 Humain"
+                                    : conv.conversationMode === "ESCALATED"
+                                    ? "🔴 Handoff"
+                                    : "🟢 IA active"}
+                                </span>
+
+                                {/* Quick Hover Actions */}
+                                <div className="hidden group-hover:flex items-center gap-1">
+                                  {conv.status === "ARCHIVED" ? (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRestoreConversations([conv.id]);
+                                      }}
+                                      className="p-1 bg-gray-800 hover:bg-gray-700 text-emerald-400 rounded"
+                                      title="Restaurer"
+                                    >
+                                      <RotateCcw className="w-3 h-3" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleArchiveConversations([conv.id]);
+                                      }}
+                                      className="p-1 bg-gray-800 hover:bg-gray-700 text-amber-400 rounded"
+                                      title="Archiver"
+                                    >
+                                      <Archive className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTargetDeleteIds([conv.id]);
+                                      setShowDeleteConfirmModal(true);
+                                    }}
+                                    className="p-1 bg-gray-800 hover:bg-red-500/20 text-red-400 rounded"
+                                    title="Supprimer"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between border-t border-[#181824] pt-3 text-xs text-gray-400">
+                  <span>
+                    Page {currentPage} / {totalPages}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-2.5 py-1 bg-[#181824] hover:bg-[#242436] rounded-lg disabled:opacity-40"
+                    >
+                      Précédent
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-2.5 py-1 bg-[#181824] hover:bg-[#242436] rounded-lg disabled:opacity-40"
+                    >
+                      Suivant
                     </button>
                   </div>
                 </div>
+              )}
+            </div>
 
-                {/* Message Stream */}
-                <div className="flex-1 overflow-y-auto py-4 space-y-3 my-2">
-                  {messages.length === 0 ? (
-                    <div className="text-center text-xs text-gray-500 py-12">
-                      Aucun message dans cette conversation.
-                    </div>
-                  ) : (
-                    messages.map((m) => (
-                      <div
-                        key={m.id}
-                        className={`flex flex-col ${
-                          m.direction === "OUTBOUND" ? "items-end" : "items-start"
-                        }`}
-                      >
-                        <div
-                          className={`max-w-md p-3.5 rounded-2xl text-xs space-y-1 ${
-                            m.direction === "OUTBOUND"
-                              ? "bg-[#7B61FF] text-white rounded-br-none"
-                              : "bg-[#0A0A10] text-gray-200 border border-[#181824] rounded-bl-none"
+            {/* Right Column: Selected Thread View & Customer Context Sidebar */}
+            <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-4 bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5">
+              {selectedConv ? (
+                <>
+                  {/* Active Message Thread Panel (2 Cols) */}
+                  <div className="md:col-span-2 flex flex-col justify-between border-r-0 md:border-r border-[#181824] pr-0 md:pr-4">
+                    {/* Header with identity & actions (Section 12) */}
+                    <div className="border-b border-[#181824] pb-3 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                          <User className="w-4 h-4 text-[#7B61FF]" />
+                          {selectedConv.customerName}
+                        </h3>
+                        <p className="text-xs text-gray-400 font-mono">
+                          {selectedConv.formattedPhone} • {selectedConv.whatsappDisplayName}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* Mode Button */}
+                        <button
+                          onClick={() => handleToggleConvMode(selectedConv.id, selectedConv.conversationMode)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1 ${
+                            selectedConv.conversationMode === "HUMAN_ACTIVE"
+                              ? "bg-blue-500/10 text-blue-400 border-blue-500/30 hover:bg-blue-500/20"
+                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
                           }`}
                         >
-                          <p>{m.content}</p>
-                          <div className="flex items-center justify-end gap-1 text-[10px] opacity-70 font-mono">
-                            <span>{m.time}</span>
-                            {m.senderType === "AI" && <span>• Agent IA</span>}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
+                          {selectedConv.conversationMode === "HUMAN_ACTIVE" ? (
+                            <>
+                              <Bot className="w-3.5 h-3.5" /> Réactiver IA
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck className="w-3.5 h-3.5" /> Prendre la main
+                            </>
+                          )}
+                        </button>
 
-                {/* Reply Form */}
-                <form onSubmit={handleSendMessage} className="border-t border-[#181824] pt-3 flex items-center gap-3">
-                  <input
-                    type="text"
-                    value={replyInput}
-                    onChange={(e) => setReplyInput(e.target.value)}
-                    placeholder="Écrire un message WhatsApp au client..."
-                    className="flex-1 bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-[#7B61FF]"
-                  />
-                  <button
-                    type="submit"
-                    disabled={isSending || !replyInput.trim()}
-                    className="px-4 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-medium flex items-center gap-2"
-                  >
-                    {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  </button>
-                </form>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-8 space-y-3">
-                <MessageSquare className="w-12 h-12 text-gray-600" />
-                <h3 className="text-sm font-bold text-white">Aucune Conversation Sélectionnée</h3>
-                <p className="text-xs text-gray-400 max-w-sm">
-                  Sélectionnez une conversation dans la liste de gauche pour lire les messages et échanger avec vos clients.
-                </p>
-              </div>
-            )}
+                        {/* Archive / Restore Button */}
+                        {selectedConv.status === "ARCHIVED" ? (
+                          <button
+                            onClick={() => handleRestoreConversations([selectedConv.id])}
+                            className="p-1.5 bg-gray-800 hover:bg-gray-700 text-emerald-400 rounded-lg text-xs font-semibold"
+                            title="Restaurer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleArchiveConversations([selectedConv.id])}
+                            className="p-1.5 bg-gray-800 hover:bg-gray-700 text-amber-400 rounded-lg text-xs font-semibold"
+                            title="Archiver"
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Delete Button */}
+                        <button
+                          onClick={() => {
+                            setTargetDeleteIds([selectedConv.id]);
+                            setShowDeleteConfirmModal(true);
+                          }}
+                          className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-xs font-semibold"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Message Stream Timeline */}
+                    <div className="flex-1 overflow-y-auto py-3 space-y-3 my-2 max-h-[420px] pr-1">
+                      {messages.length === 0 ? (
+                        <div className="text-center text-xs text-gray-500 py-12">
+                          Aucun message dans cette conversation.
+                        </div>
+                      ) : (
+                        messages.map((m) => (
+                          <div
+                            key={m.id}
+                            className={`flex flex-col ${
+                              m.direction === "OUTBOUND" ? "items-end" : "items-start"
+                            }`}
+                          >
+                            <div
+                              className={`max-w-md p-3 rounded-2xl text-xs space-y-1.5 ${
+                                m.direction === "OUTBOUND"
+                                  ? "bg-[#7B61FF] text-white rounded-br-none"
+                                  : "bg-[#0A0A10] text-gray-200 border border-[#181824] rounded-bl-none"
+                              }`}
+                            >
+                              {/* MEDIA RENDERERS (SECTION 14) */}
+                              {m.messageType === "IMAGE" && (
+                                <div className="rounded-xl overflow-hidden bg-black/40 border border-white/10 p-1">
+                                  {m.mediaUrl ? (
+                                    <img
+                                      src={m.mediaUrl}
+                                      alt="Média WhatsApp"
+                                      className="max-h-48 w-full object-contain rounded-lg"
+                                    />
+                                  ) : (
+                                    <div className="p-3 text-[11px] text-amber-400 flex items-center gap-1.5">
+                                      <ImageIcon className="w-4 h-4" />
+                                      <span>Image transmise par WhatsApp</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {m.messageType === "AUDIO" && (
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 p-1.5 bg-black/30 rounded-xl">
+                                    <Mic className="w-4 h-4 text-emerald-400 shrink-0" />
+                                    {m.mediaUrl ? (
+                                      <audio controls src={m.mediaUrl} className="w-full max-w-[200px] h-8" />
+                                    ) : (
+                                      <span className="text-[11px] text-gray-300 italic">Note vocale enregistrée</span>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {m.messageType === "DOCUMENT" && (
+                                <div className="p-2 bg-black/30 rounded-xl flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 truncate">
+                                    <FileText className="w-4 h-4 text-blue-400 shrink-0" />
+                                    <span className="text-[11px] truncate">Document joint</span>
+                                  </div>
+                                  {m.mediaUrl ? (
+                                    <a
+                                      href={m.mediaUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="p-1 bg-gray-800 hover:bg-gray-700 text-white rounded"
+                                    >
+                                      <FileDown className="w-3.5 h-3.5" />
+                                    </a>
+                                  ) : (
+                                    <span className="text-[10px] text-gray-400">Media indisponible</span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Text content */}
+                              {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
+
+                              <div className="flex items-center justify-end gap-1.5 text-[10px] opacity-70 font-mono">
+                                <span>{m.time}</span>
+                                {m.senderType === "AI" && <span>• Agent IA</span>}
+                                {m.senderType === "HUMAN" && <span>• Commercial</span>}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Reply Composer Form */}
+                    <form onSubmit={handleSendMessage} className="border-t border-[#181824] pt-3 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={replyInput}
+                        onChange={(e) => setReplyInput(e.target.value)}
+                        placeholder="Répondre sur WhatsApp..."
+                        className="flex-1 bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-[#7B61FF]"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSending || !replyInput.trim()}
+                        className="px-3.5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-medium flex items-center gap-1.5"
+                      >
+                        {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Customer Context Sidebar (Section 13) */}
+                  <div className="space-y-4 text-xs font-sans">
+                    <div className="border-b border-[#181824] pb-2 font-bold text-gray-300 uppercase font-mono tracking-wider">
+                      Fiche Client & Context
+                    </div>
+
+                    {/* Customer Info Card */}
+                    <div className="bg-[#0A0A10] border border-[#181824] p-3 rounded-xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white text-xs">👤 Infos Client</span>
+                        {selectedCustomer && (
+                          <button
+                            onClick={() => loadCustomerFiche(selectedCustomer)}
+                            className="text-[10px] text-[#7B61FF] hover:underline"
+                          >
+                            Actualiser
+                          </button>
+                        )}
+                      </div>
+
+                      {selectedCustomer ? (
+                        <div className="space-y-1 text-[11px] text-gray-300">
+                          <p><span className="text-gray-500 font-mono">Nom:</span> {selectedCustomer.first_name} {selectedCustomer.last_name}</p>
+                          <p><span className="text-gray-500 font-mono">Tél:</span> {formatPhoneNumber(selectedCustomer.phone)}</p>
+                          {selectedCustomer.city && <p><span className="text-gray-500 font-mono">Ville:</span> {selectedCustomer.city}</p>}
+                          {selectedCustomer.email && <p><span className="text-gray-500 font-mono">Email:</span> {selectedCustomer.email}</p>}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 italic">Prospect non encore rattaché au CRM.</p>
+                      )}
+                    </div>
+
+                    {/* Orders History Card */}
+                    <div className="bg-[#0A0A10] border border-[#181824] p-3 rounded-xl space-y-2">
+                      <span className="font-bold text-white text-xs block">📦 Commandes Client</span>
+                      {customerOrders.length > 0 ? (
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                          {customerOrders.map((ord) => (
+                            <div key={ord.id} className="p-2 bg-[#12121A] rounded-lg border border-[#181824] flex items-center justify-between text-[11px]">
+                              <div>
+                                <p className="font-bold text-white">#{ord.order_number}</p>
+                                <p className="text-[10px] text-gray-400">{Number(ord.total_amount || 0).toLocaleString()} XOF</p>
+                              </div>
+                              <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 rounded-full text-[9px] font-mono">
+                                {ord.status}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 italic">Aucune commande enregistrée.</p>
+                      )}
+                    </div>
+
+                    {/* Ad Attribution Card */}
+                    <div className="bg-[#0A0A10] border border-[#181824] p-3 rounded-xl space-y-2">
+                      <span className="font-bold text-white text-xs block">🎯 Source & Attribution</span>
+                      {customerAttributions.length > 0 ? (
+                        <div className="space-y-1 text-[11px] text-gray-300">
+                          <p><span className="text-gray-500 font-mono">Canal:</span> {customerAttributions[0].ad_platform || "Facebook Ads"}</p>
+                          {customerAttributions[0].campaign_name && <p><span className="text-gray-500 font-mono">Campagne:</span> {customerAttributions[0].campaign_name}</p>}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-gray-500 italic">WhatsApp Direct / Organique</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="col-span-3 flex flex-col items-center justify-center text-center p-12 space-y-3">
+                  <MessageSquare className="w-12 h-12 text-gray-600" />
+                  <h3 className="text-sm font-bold text-white">Aucune Conversation Sélectionnée</h3>
+                  <p className="text-xs text-gray-400 max-w-sm">
+                    Sélectionnez une conversation dans la liste de gauche pour lire les messages et échanger avec vos clients.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1168,7 +1775,7 @@ export default function SalesCRMPage() {
                         </div>
                         {c.first_name} {c.last_name}
                       </td>
-                      <td className="p-4 font-mono">{c.phone}</td>
+                      <td className="p-4 font-mono">{formatPhoneNumber(c.phone)}</td>
                       <td className="p-4 text-gray-400">{c.email || "—"}</td>
                       <td className="p-4">
                         <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-mono rounded-full font-bold">
@@ -1189,449 +1796,228 @@ export default function SalesCRMPage() {
               </table>
             </div>
           )}
-
-          {/* CUSTOMER FICHE SHEET / MODAL */}
-          {selectedCustomer && (
-            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-              <div className="bg-[#12121A] border border-[#7B61FF]/30 rounded-2xl max-w-2xl w-full p-6 space-y-6 shadow-2xl animate-scale-up max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between border-b border-[#181824] pb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-[#7B61FF]/20 text-[#7B61FF] border border-[#7B61FF]/30 flex items-center justify-center font-extrabold text-lg">
-                      {selectedCustomer.first_name?.charAt(0) || "C"}
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">
-                        {selectedCustomer.first_name} {selectedCustomer.last_name}
-                      </h3>
-                      <p className="text-xs text-gray-400 font-mono">{selectedCustomer.phone}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setSelectedCustomer(null)}
-                    className="text-gray-400 hover:text-white p-1"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 bg-[#0A0A10] p-4 rounded-xl border border-[#181824] text-xs font-mono">
-                  <div>
-                    <span className="text-gray-400">Commandes:</span>
-                    <p className="font-bold text-white text-sm">{customerOrders.length}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Total Dépensé:</span>
-                    <p className="font-bold text-emerald-400 text-sm">
-                      {customerOrders.reduce((acc, o) => acc + Number(o.total_amount || 0), 0).toLocaleString()} F
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Statut:</span>
-                    <p className="font-bold text-[#7B61FF] text-sm">{selectedCustomer.status}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-bold text-sm text-white flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-[#7B61FF]" />
-                      Notes Internes
-                    </h4>
-                    <button
-                      onClick={() => setShowNewNoteModal(true)}
-                      className="text-xs text-[#7B61FF] hover:underline flex items-center gap-1 font-medium"
-                    >
-                      <Plus className="w-3.5 h-3.5" /> Ajouter une note
-                    </button>
-                  </div>
-
-                  {customerNotes.length === 0 ? (
-                    <div className="text-xs text-gray-500 italic p-3 bg-[#0A0A10] rounded-xl border border-[#181824]">
-                      Aucune note enregistrée.
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {customerNotes.map((n) => (
-                        <div key={n.id} className="p-3 bg-[#0A0A10] rounded-xl border border-[#181824] text-xs space-y-1">
-                          <p className="text-gray-200">{n.content}</p>
-                          <span className="text-[10px] font-mono text-gray-500">
-                            {new Date(n.created_at).toLocaleDateString()}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4 border-t border-[#181824]">
-                  <button
-                    onClick={() => setSelectedCustomer(null)}
-                    className="px-4 py-2 bg-[#181824] text-gray-300 text-xs rounded-xl"
-                  >
-                    Fermer
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* TAB CONTENT: AGENT CONFIGURATION */}
+      {/* TAB CONTENT: AGENT CONFIG */}
       {activeTab === "agent_config" && (
         <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-6 space-y-6">
-          <div>
+          <div className="border-b border-[#181824] pb-4">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Settings className="w-5 h-5 text-[#7B61FF]" />
               Configuration de l&apos;Agent IA Commercial
             </h2>
             <p className="text-xs text-gray-400 mt-1">
-              Personnalisez l&apos;identité, le ton et les règles de votre assistant virtuel.
+              Définissez l&apos;identité, les consignes métier et les règles d&apos;escalade pour l&apos;Agent IA.
             </p>
           </div>
 
-          <form onSubmit={handleSaveAgentConfig} className="space-y-6 text-xs">
-            {/* SECTION 1: IDENTITÉ & INSTRUCTIONS */}
-            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
-              <h3 className="font-bold text-sm text-[#7B61FF] flex items-center gap-2">
-                1. IDENTITÉ & INSTRUCTIONS PERSONNALISÉES
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-gray-300 mb-1">Nom de l&apos;Agent IA</label>
-                  <input
-                    type="text"
-                    value={agentConfig.name}
-                    onChange={(e) => setAgentConfig({ ...agentConfig, name: e.target.value })}
-                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#7B61FF]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-300 mb-1">Présentation / Pitch</label>
-                  <input
-                    type="text"
-                    value={agentConfig.presentation}
-                    onChange={(e) => setAgentConfig({ ...agentConfig, presentation: e.target.value })}
-                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#7B61FF]"
-                  />
-                </div>
+          <form onSubmit={handleSaveAgentConfig} className="space-y-6 max-w-3xl">
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Nom de l&apos;Agent</label>
+                <input
+                  type="text"
+                  value={agentConfig.name}
+                  onChange={(e) => setAgentConfig({ ...agentConfig, name: e.target.value })}
+                  className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white text-xs outline-none focus:border-[#7B61FF]"
+                />
               </div>
 
               <div>
-                <label className="block text-gray-300 mb-1 font-bold text-emerald-400">
-                  📝 Instructions supplémentaires de l&apos;Agent (Injectées dans le prompt réels)
-                </label>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Instructions Personnalisées</label>
                 <textarea
-                  rows={3}
-                  placeholder="ex: Tu es Wilfried, l'assistant commercial virtuel de WillShop. Réponds de façon très courtoise et propose toujours nos offres promotionnelles du moment..."
-                  value={(agentConfig as any).custom_instructions || ""}
-                  onChange={(e) => setAgentConfig({ ...agentConfig, custom_instructions: e.target.value } as any)}
-                  className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-3 text-white focus:outline-none focus:border-[#7B61FF]"
+                  rows={4}
+                  value={agentConfig.custom_instructions}
+                  onChange={(e) => setAgentConfig({ ...agentConfig, custom_instructions: e.target.value })}
+                  className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white text-xs outline-none focus:border-[#7B61FF]"
                 />
               </div>
-            </div>
 
-            {/* SECTION 2: COMMUNICATION */}
-            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
-              <h3 className="font-bold text-sm text-[#7B61FF] flex items-center gap-2">
-                2. COMMUNICATION & STYLE
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-gray-300 mb-1">Ton</label>
-                  <select
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Ton</label>
+                  <input
+                    type="text"
                     value={agentConfig.tone}
                     onChange={(e) => setAgentConfig({ ...agentConfig, tone: e.target.value })}
-                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
-                  >
-                    <option value="Professionnel & Chaleureux">Professionnel & Chaleureux</option>
-                    <option value="Direct & Efficace">Direct & Efficace</option>
-                    <option value="Enthousiaste & Commercial">Enthousiaste & Commercial</option>
-                  </select>
+                    className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white text-xs outline-none focus:border-[#7B61FF]"
+                  />
                 </div>
                 <div>
-                  <label className="block text-gray-300 mb-1">Langue</label>
-                  <select
+                  <label className="text-xs font-semibold text-gray-300 block mb-1">Langue</label>
+                  <input
+                    type="text"
                     value={agentConfig.language}
                     onChange={(e) => setAgentConfig({ ...agentConfig, language: e.target.value })}
-                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
-                  >
-                    <option value="Français">Français</option>
-                    <option value="Français & Mooré">Français & Mooré</option>
-                    <option value="Français & Dioula">Français & Dioula</option>
-                    <option value="Anglais">Anglais</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-gray-300 mb-1">Style</label>
-                  <input
-                    type="text"
-                    value={agentConfig.style}
-                    onChange={(e) => setAgentConfig({ ...agentConfig, style: e.target.value })}
-                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-300 mb-1">Formalité</label>
-                  <select
-                    value={agentConfig.formality}
-                    onChange={(e) => setAgentConfig({ ...agentConfig, formality: e.target.value })}
-                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl px-3 py-2 text-white"
-                  >
-                    <option value="SOUTENU">Vouvoiement (Soutenu)</option>
-                    <option value="ACCUEILLANT">Vouvoiement (Chaleureux)</option>
-                    <option value="TUTOIEMENT">Tutoiement (Convivial)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* SECTION 3: MISSION */}
-            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
-              <h3 className="font-bold text-sm text-[#7B61FF]">3. PERMISSIONS & MISSIONS DE L&apos;AGENT</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 font-mono text-[11px]">
-                {Object.entries(agentConfig.mission || {}).map(([key, val]) => (
-                  <label key={key} className="flex items-center gap-2 bg-[#12121A] p-2.5 rounded-lg border border-[#181824] text-gray-300 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!val}
-                      onChange={(e) =>
-                        setAgentConfig({
-                          ...agentConfig,
-                          mission: { ...agentConfig.mission, [key]: e.target.checked },
-                        })
-                      }
-                      className="accent-[#7B61FF]"
-                    />
-                    <span>{key.replace(/_/g, " ")}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* SECTION 4: RÈGLES STRICTES */}
-            <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
-              <h3 className="font-bold text-sm text-[#7B61FF]">4. RÈGLES DE SÉCURITÉ & ANTI-FAUX</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 font-mono text-[11px]">
-                {Object.entries(agentConfig.rules || {}).map(([key, val]) => (
-                  <label key={key} className="flex items-center gap-2 bg-[#12121A] p-2.5 rounded-lg border border-[#181824] text-emerald-400 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!val}
-                      onChange={(e) =>
-                        setAgentConfig({
-                          ...agentConfig,
-                          rules: { ...agentConfig.rules, [key]: e.target.checked },
-                        })
-                      }
-                      className="accent-emerald-500"
-                    />
-                    <span>{key.replace(/_/g, " ")}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* SECTION 5 & 6: HORAIRES & ESCALADE */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
-                <h3 className="font-bold text-sm text-[#7B61FF]">5. HORAIRES DE SERVICE</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-gray-400 text-[10px] mb-1">Début</label>
-                    <input
-                      type="time"
-                      value={agentConfig.schedule?.startTime || "08:00"}
-                      onChange={(e) =>
-                        setAgentConfig({
-                          ...agentConfig,
-                          schedule: { ...agentConfig.schedule, startTime: e.target.value },
-                        })
-                      }
-                      className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-2 text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-gray-400 text-[10px] mb-1">Fin</label>
-                    <input
-                      type="time"
-                      value={agentConfig.schedule?.endTime || "20:00"}
-                      onChange={(e) =>
-                        setAgentConfig({
-                          ...agentConfig,
-                          schedule: { ...agentConfig.schedule, endTime: e.target.value },
-                        })
-                      }
-                      className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-2 text-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-[#0A0A10] border border-[#181824] p-4 rounded-xl space-y-3">
-                <h3 className="font-bold text-sm text-[#7B61FF]">6. ESCALADE HUMAINE</h3>
-                <div>
-                  <label className="block text-gray-400 text-[10px] mb-1">Conditions de transfert</label>
-                  <input
-                    type="text"
-                    value={agentConfig.escalation?.conditions || ""}
-                    onChange={(e) =>
-                      setAgentConfig({
-                        ...agentConfig,
-                        escalation: { ...agentConfig.escalation, conditions: e.target.value },
-                      })
-                    }
-                    className="w-full bg-[#12121A] border border-[#242436] rounded-xl p-2 text-white"
+                    className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white text-xs outline-none focus:border-[#7B61FF]"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end pt-4 border-t border-[#181824]">
-              <button
-                type="submit"
-                className="px-6 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-bold rounded-xl text-xs transition-all shadow-lg"
-              >
-                💾 Enregistrer la Configuration Réelle
-              </button>
-            </div>
+            <button
+              type="submit"
+              className="px-6 py-2.5 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-bold rounded-xl text-xs transition-all shadow-lg"
+            >
+              Enregistrer la configuration
+            </button>
           </form>
         </div>
       )}
 
       {/* TAB CONTENT: PLAYGROUND */}
       {activeTab === "playground" && (
-        <div className="bg-[#12121A] border border-emerald-500/30 rounded-2xl p-6 space-y-6">
-          <div>
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <Play className="w-5 h-5 text-emerald-400" />
-              🧪 Playground de Démonstration Agent IA
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-6 space-y-4">
+          <div className="border-b border-[#181824] pb-3 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+              <Play className="w-5 h-5 text-emerald-400" /> Playground de Test Agent IA
             </h2>
-            <p className="text-xs text-gray-400 mt-1">
-              Simulez une conversation en direct avec votre Agent IA utilisant vos données réelles.
-            </p>
+            <span className="text-xs text-gray-400 font-mono">PROMPT & TOOL TEST BENCH</span>
           </div>
 
-          <div className="bg-[#0A0A10] border border-[#181824] rounded-2xl h-[400px] flex flex-col justify-between p-4">
-            <div className="overflow-y-auto space-y-3 pr-2">
-              {playgroundMsgs.map((m, idx) => (
+          <div className="h-[400px] overflow-y-auto space-y-3 p-4 bg-[#0A0A10] rounded-xl border border-[#181824]">
+            {playgroundMsgs.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
+              >
                 <div
-                  key={idx}
-                  className={`flex flex-col ${
-                    m.role === "user" ? "items-end" : "items-start"
+                  className={`max-w-xl p-3.5 rounded-2xl text-xs space-y-1 ${
+                    msg.role === "user"
+                      ? "bg-[#7B61FF] text-white rounded-br-none"
+                      : "bg-[#181824] text-gray-200 border border-[#282838] rounded-bl-none"
                   }`}
                 >
-                  <div
-                    className={`max-w-md p-3.5 rounded-2xl text-xs space-y-1 ${
-                      m.role === "user"
-                        ? "bg-[#7B61FF] text-white rounded-br-none"
-                        : "bg-[#161624] text-gray-200 border border-[#242436] rounded-bl-none"
-                    }`}
-                  >
-                    <p className="whitespace-pre-line">{m.content}</p>
-                    <span className="text-[10px] opacity-60 font-mono block text-right">{m.time}</span>
-                  </div>
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <span className="text-[10px] opacity-60 block text-right font-mono">{msg.time}</span>
                 </div>
-              ))}
+              </div>
+            ))}
 
-              {isPlaygroundThinking && (
-                <div className="flex items-center gap-2 text-xs text-[#7B61FF] italic font-mono p-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Agent IA en train de réfléchir...</span>
-                </div>
-              )}
+            {isPlaygroundThinking && (
+              <div className="flex items-center gap-2 text-xs text-emerald-400 font-mono py-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>L&apos;Agent IA prépare sa réponse...</span>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handlePlaygroundSubmit} className="flex items-center gap-3">
+            <input
+              type="text"
+              value={playgroundInput}
+              onChange={(e) => setPlaygroundInput(e.target.value)}
+              placeholder="Testez l'Agent IA avec une question client..."
+              className="flex-1 bg-[#0A0A10] border border-[#282838] rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-emerald-400"
+            />
+            <button
+              type="submit"
+              disabled={isPlaygroundThinking || !playgroundInput.trim()}
+              className="px-5 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs rounded-xl transition-all disabled:opacity-50"
+            >
+              Tester
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL: DELETE CONVERSATIONS (SECTION 5) */}
+      {showDeleteConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-red-500/30 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl animate-scale-up">
+            <div className="flex items-center gap-3 text-red-400">
+              <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="font-bold text-base text-white">
+                {targetDeleteIds.length > 1
+                  ? `Supprimer ${targetDeleteIds.length} conversations ?`
+                  : "Supprimer cette conversation ?"}
+              </h3>
             </div>
 
-            <form onSubmit={handlePlaygroundSubmit} className="pt-3 border-t border-[#181824] flex items-center gap-3">
-              <input
-                type="text"
-                value={playgroundInput}
-                onChange={(e) => setPlaygroundInput(e.target.value)}
-                placeholder="Tester l'agent (ex: 'Bonjour, avez-vous des t-shirts ?')..."
-                className="flex-1 bg-[#12121A] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-400"
-              />
+            {/* EXPLICIT DATA PRESERVATION WARNING (SECTION 4 & 5) */}
+            <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl space-y-2 text-xs text-amber-200">
+              <p className="font-bold flex items-center gap-1.5 text-amber-400">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                Protection des données clients & commerciales :
+              </p>
+              <p className="leading-relaxed">
+                Cette action supprimera l&apos;historique de conversation mais <strong>NE SUPPRIMERA PAS</strong> le client, les commandes, les paiements ou les livraisons associés dans le CRM.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
               <button
-                type="submit"
-                disabled={!playgroundInput.trim() || isPlaygroundThinking}
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all"
+                type="button"
+                onClick={() => {
+                  setShowDeleteConfirmModal(false);
+                  setTargetDeleteIds([]);
+                }}
+                disabled={isActionProcessing}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-semibold"
               >
-                Envoyer
+                Annuler
               </button>
-            </form>
+              <button
+                type="button"
+                onClick={handleDeleteConversationsConfirmed}
+                disabled={isActionProcessing}
+                className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-xs flex items-center gap-2"
+              >
+                {isActionProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : "Supprimer définitivement"}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* MODAL: CONNECT WHATSAPP */}
+      {/* CONNECT WHATSAPP MODAL */}
       {showConnectModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#12121A] border border-[#7B61FF]/30 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl animate-scale-up">
-            <div className="flex items-center justify-between border-b border-[#181824] pb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Phone className="w-5 h-5 text-emerald-400" />
-                Connecter un numéro WhatsApp
-              </h3>
-              <button
-                onClick={() => setShowConnectModal(false)}
-                className="text-gray-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+          <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <Phone className="w-5 h-5 text-emerald-400" /> Connecter un Numéro WhatsApp
+            </h3>
 
-            <form onSubmit={handleConnectWhatsApp} className="space-y-4">
+            <form onSubmit={handleConnectWhatsApp} className="space-y-4 text-xs">
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  Numéro de Téléphone WhatsApp *
-                </label>
+                <label className="font-semibold text-gray-300 block mb-1">Numéro WhatsApp *</label>
                 <input
                   type="text"
-                  required
-                  placeholder="ex: +22670000000"
+                  placeholder="+226 70 00 00 00"
                   value={connectForm.phoneNumber}
                   onChange={(e) => setConnectForm({ ...connectForm, phoneNumber: e.target.value })}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-400"
+                  className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white outline-none focus:border-emerald-400 font-mono"
+                  required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  Nom d&apos;Affichage
-                </label>
+                <label className="font-semibold text-gray-300 block mb-1">Nom d&apos;affichage</label>
                 <input
                   type="text"
+                  placeholder="WILLShop Commercial"
                   value={connectForm.displayName}
                   onChange={(e) => setConnectForm({ ...connectForm, displayName: e.target.value })}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-400"
+                  className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white outline-none focus:border-emerald-400"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  Provider Phone Number ID (Meta Cloud API)
-                </label>
-                <input
-                  type="text"
-                  placeholder="ex: 1029384756102"
-                  value={connectForm.providerPhoneNumberId}
-                  onChange={(e) => setConnectForm({ ...connectForm, providerPhoneNumberId: e.target.value })}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-400 font-mono"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-[#181824]">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowConnectModal(false)}
-                  className="px-4 py-2 bg-[#181824] text-gray-300 text-xs rounded-xl"
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl font-semibold"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl"
+                  className="px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl"
                 >
-                  Valider et Connecter
+                  Connecter
                 </button>
               </div>
             </form>
@@ -1639,135 +2025,74 @@ export default function SalesCRMPage() {
         </div>
       )}
 
-      {/* MODAL: NOUVEAU CLIENT */}
+      {/* NEW CUSTOMER MODAL */}
       {showNewCustomerModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#12121A] border border-[#7B61FF]/30 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl animate-scale-up">
-            <div className="flex items-center justify-between border-b border-[#181824] pb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-[#7B61FF]" />
-                Nouveau Client CRM
-              </h3>
-              <button
-                onClick={() => setShowNewCustomerModal(false)}
-                className="text-gray-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+          <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl max-w-md w-full p-6 space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <UserPlus className="w-5 h-5 text-[#7B61FF]" /> Nouveau Client CRM
+            </h3>
 
-            <form onSubmit={handleCreateCustomer} className="space-y-4">
+            <form onSubmit={handleCreateCustomer} className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1">Prénom</label>
+                  <label className="font-semibold text-gray-300 block mb-1">Prénom</label>
                   <input
                     type="text"
-                    placeholder="Prénom"
+                    placeholder="Aminata"
                     value={customerForm.firstName}
                     onChange={(e) => setCustomerForm({ ...customerForm, firstName: e.target.value })}
-                    className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
+                    className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white outline-none focus:border-[#7B61FF]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-300 mb-1">Nom</label>
+                  <label className="font-semibold text-gray-300 block mb-1">Nom</label>
                   <input
                     type="text"
-                    placeholder="Nom"
+                    placeholder="Diallo"
                     value={customerForm.lastName}
                     onChange={(e) => setCustomerForm({ ...customerForm, lastName: e.target.value })}
-                    className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-3 py-2 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
+                    className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white outline-none focus:border-[#7B61FF]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Téléphone *</label>
+                <label className="font-semibold text-gray-300 block mb-1">Téléphone *</label>
                 <input
                   type="text"
-                  required
-                  placeholder="+226..."
+                  placeholder="+226 77 00 00 00"
                   value={customerForm.phone}
                   onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
+                  className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white outline-none focus:border-[#7B61FF] font-mono"
+                  required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">Email</label>
+                <label className="font-semibold text-gray-300 block mb-1">Email</label>
                 <input
                   type="email"
-                  placeholder="exemple@email.com"
+                  placeholder="aminata@example.bf"
                   value={customerForm.email}
                   onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
+                  className="w-full bg-[#0A0A10] border border-[#282838] rounded-xl p-3 text-white outline-none focus:border-[#7B61FF]"
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-[#181824]">
+              <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setShowNewCustomerModal(false)}
-                  className="px-4 py-2 bg-[#181824] text-gray-300 text-xs rounded-xl"
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl font-semibold"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white font-bold rounded-xl"
                 >
-                  Créer le Client
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: ADD NOTE */}
-      {showNewNoteModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#12121A] border border-[#7B61FF]/30 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl animate-scale-up">
-            <div className="flex items-center justify-between border-b border-[#181824] pb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <FileText className="w-5 h-5 text-[#7B61FF]" />
-                Ajouter une Note Interne
-              </h3>
-              <button
-                onClick={() => setShowNewNoteModal(false)}
-                className="text-gray-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleAddNote} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-300 mb-1">
-                  Contenu de la note *
-                </label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="Remarques, préférences client, historique d'échange..."
-                  value={noteContent}
-                  onChange={(e) => setNoteContent(e.target.value)}
-                  className="w-full bg-[#0A0A10] border border-[#1E1E2C] rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#7B61FF]"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-[#181824]">
-                <button
-                  type="button"
-                  onClick={() => setShowNewNoteModal(false)}
-                  className="px-4 py-2 bg-[#181824] text-gray-300 text-xs rounded-xl"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-bold rounded-xl"
-                >
-                  Enregistrer
+                  Créer le client
                 </button>
               </div>
             </form>

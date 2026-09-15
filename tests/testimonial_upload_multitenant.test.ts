@@ -10,10 +10,20 @@ import { createClient } from '../src/infrastructure/supabase/client.js';
 import { REAL_COMMERCIAL_ORG_ID, SANDBOX_TEST_ORG_ID, assertNotCommercialOrg } from '../src/config/testGuardrails.js';
 import { AIToolsRegistry } from '../src/application/services/AIToolsRegistry.js';
 
+import { InMemoryProductRepository, InMemoryOrderRepository } from '../src/infrastructure/repositories/InMemoryDataCoreRepositories.js';
+import { InMemoryAuditRepository, InMemoryEventRepository } from '../src/infrastructure/repositories/InMemoryRepositories.js';
+import { CreateOrderService } from '../src/application/services/OrderStockApplicationServices.js';
+
 describe('Real Customer Testimonials Image Upload & Storage Multi-Tenant Isolation', () => {
   const supabase = createClient();
   const TENANT_A = SANDBOX_TEST_ORG_ID; // '00000000-0000-4000-a000-000000000000'
   const TENANT_B = '11111111-1111-4111-a111-111111111111';
+
+  const productRepo = new InMemoryProductRepository();
+  const orderRepo = new InMemoryOrderRepository();
+  const auditRepo = new InMemoryAuditRepository();
+  const eventRepo = new InMemoryEventRepository();
+  const createOrderService = new CreateOrderService(orderRepo, productRepo, auditRepo, eventRepo);
 
   beforeEach(() => {
     // Enforce anti-pollution safeguard
@@ -220,7 +230,7 @@ describe('Real Customer Testimonials Image Upload & Storage Multi-Tenant Isolati
   });
 
   test('K. AI Agent tool search_testimonials retrieves current tenant active testimonials only', async () => {
-    const registry = new AIToolsRegistry();
+    const registry = new AIToolsRegistry(productRepo, orderRepo, createOrderService);
     const config = {
       testimonials: [
         {
