@@ -167,6 +167,14 @@ export class AIToolsRegistry {
           required: ['testimonialId'],
         },
       },
+      {
+        name: 'get_payment_methods',
+        description: "Consulte la liste des moyens de paiement autorisés et actifs de l'entreprise (Mobile Money, Virement, Paiement à la livraison) avec leurs numéros et instructions réels.",
+        input_schema: {
+          type: 'object',
+          properties: {},
+        },
+      },
     ];
   }
 
@@ -182,6 +190,32 @@ export class AIToolsRegistry {
   ): Promise<{ result: any; triggerHandoff?: boolean }> {
     try {
       switch (name) {
+        case 'get_payment_methods': {
+          const configuredMethods = (aiAgentConfig?.payment_methods || []) as any[];
+          const activeMethods = configuredMethods.filter((pm: any) => pm.status === 'ACTIVE' || pm.status === undefined || pm.isActive === true);
+
+          if (activeMethods.length === 0) {
+            return {
+              result: {
+                found: false,
+                paymentMethods: [],
+                message: "Pour le moment, aucun moyen de paiement n'est configuré pour cette organisation.",
+              },
+            };
+          }
+
+          return {
+            result: {
+              found: true,
+              paymentMethods: activeMethods.map((pm: any) => ({
+                name: pm.name,
+                identifier: pm.identifier,
+                instructions: pm.instructions || '',
+              })),
+            },
+          };
+        }
+
         case 'search_products': {
           const products = await this.productRepo.listByOrg(organizationId);
           const query = (args.query || '').toLowerCase();

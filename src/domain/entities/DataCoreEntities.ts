@@ -216,6 +216,22 @@ export interface Delivery {
   updatedAt: Date;
 }
 
+export interface PaymentMethodEntity {
+  id: string;
+  organizationId: string;
+  name: string;
+  type: string;
+  identifier: string;
+  instructions?: string | null;
+  isActive: boolean;
+  sortOrder: number;
+  notes?: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy?: string | null;
+  deletedAt?: Date | null;
+}
+
 export type FinancialAccountType = 'CASH_REGISTER' | 'BANK_ACCOUNT' | 'MOBILE_MONEY' | 'OTHER_PRO';
 
 export interface FinancialAccount {

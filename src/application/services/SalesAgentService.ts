@@ -114,7 +114,8 @@ export class SalesAgentContextService {
     recentMessages: Message[],
     availableProducts: Product[],
     adAttribution?: any,
-    tokenBudget = 1000
+    tokenBudget = 1000,
+    aiAgentConfig?: any
   ): string {
     const customerInfo = `Client: ${customer.fullName} (${customer.phone}) - Statut: ${customer.status}`;
 
@@ -139,9 +140,26 @@ method: ${adAttribution.attributionMethod || 'UNKNOWN'}
 `;
     }
 
+    let paymentBlock = '';
+    const configuredPms = aiAgentConfig?.payment_methods || [];
+    const activePms = Array.isArray(configuredPms) ? configuredPms.filter((pm: any) => pm.status === 'ACTIVE' || pm.status === undefined || pm.isActive === true) : [];
+    if (activePms.length > 0) {
+      const pmsStr = activePms.map((pm: any) => `- ${pm.name} (${pm.identifier}): ${pm.instructions || 'Aucune instruction'}`).join('\n');
+      paymentBlock = `
+=== MOYENS DE PAIEMENT AUTORISÉS (DB SSOT - NE JAMAIS INVENTER DE NUMÉRO) ===
+${pmsStr}
+`;
+    } else {
+      paymentBlock = `
+=== MOYENS DE PAIEMENT AUTORISÉS ===
+Pour le moment, aucun moyen de paiement n'est configuré.
+`;
+    }
+
     const rawContext = `=== CONTEXTE COMMERCIAL INTERNE WILLSHOP ===
 ${customerInfo}
 ${attributionBlock}
+${paymentBlock}
 === PRODUITS AUTORISÉS (PRIX STRICTS - NE JAMAIS INVENTER) ===
 ${productsInfo || 'Aucun produit au catalogue.'}
 `;
@@ -235,7 +253,7 @@ export class SalesAgentService {
       };
     }
 
-    const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts, adAttribution);
+    const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts, adAttribution, 1000, aiAgentConfig);
 
     // Isolate current incoming customer query vs past message history
     let historyMsgs: Message[] = [];

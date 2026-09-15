@@ -607,7 +607,7 @@ export default function AIAgentsConfigPage() {
   // --- PAYMENT METHODS CRUD HANDLERS ---
   const handleSavePayment = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paymentForm.name.trim()) return;
+    if (!paymentForm.name.trim() || !paymentForm.identifier.trim()) return;
 
     if (editingPayment) {
       setPaymentMethods((prev) =>
@@ -641,6 +641,15 @@ export default function AIAgentsConfigPage() {
     setShowPaymentModal(false);
     setEditingPayment(null);
     setPaymentForm({ name: "", identifier: "", instructions: "", status: "ACTIVE", notes: "" });
+  };
+
+  const handleTogglePaymentStatus = (id: string) => {
+    setPaymentMethods((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, status: p.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE" } : p
+      )
+    );
+    showToast("✓ Statut mis à jour");
   };
 
   const handleDeletePayment = (id: string) => {
@@ -1365,54 +1374,86 @@ export default function AIAgentsConfigPage() {
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {paymentMethods.map((pm) => (
-                      <div key={pm.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-white text-sm flex items-center gap-2">
-                            <CreditCard className="w-4 h-4 text-purple-400" />
-                            {pm.name}
-                          </span>
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                            {pm.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
-                          </span>
-                        </div>
-                        <div className="bg-[#12121A] p-3 rounded-xl border border-white/5 font-mono text-xs">
-                          <span className="text-gray-400 text-[11px] block">Identifiant / Dépôt :</span>
-                          <strong className="text-white text-sm">{pm.identifier}</strong>
-                        </div>
-                        {pm.instructions && (
-                          <p className="text-xs text-gray-300 bg-[#14141E] p-2.5 rounded-xl border border-white/5">
-                            {pm.instructions}
-                          </p>
-                        )}
-                        <div className="flex justify-end gap-2 pt-1">
-                          <button
-                            onClick={() => {
-                              setEditingPayment(pm);
-                              setPaymentForm({
-                                name: pm.name,
-                                identifier: pm.identifier,
-                                instructions: pm.instructions,
-                                status: pm.status,
-                                notes: pm.notes || "",
-                              });
-                              setShowPaymentModal(true);
-                            }}
-                            className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDeletePayment(pm.id)}
-                            className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                  {paymentMethods.length === 0 ? (
+                    <div className="bg-[#181824] border border-[#282838] p-8 rounded-2xl text-center space-y-3">
+                      <div className="p-3 bg-purple-500/10 text-purple-400 rounded-full w-12 h-12 mx-auto flex items-center justify-center">
+                        <CreditCard className="w-6 h-6" />
                       </div>
-                    ))}
-                  </div>
+                      <h5 className="text-white font-bold text-sm">Aucun moyen de paiement configuré</h5>
+                      <p className="text-xs text-gray-400 max-w-md mx-auto">
+                        Ajoutez les moyens de paiement acceptés par votre entreprise (ex: Mobile Money, Virement bancaire, Paiement à la livraison) pour permettre à l'Agent IA de guider vos clients.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setEditingPayment(null);
+                          setPaymentForm({ name: "", identifier: "", instructions: "", status: "ACTIVE", notes: "" });
+                          setShowPaymentModal(true);
+                        }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white text-xs font-semibold rounded-xl transition-all shadow-md mt-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Ajouter un moyen de paiement
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {paymentMethods.map((pm) => (
+                        <div key={pm.id} className="bg-[#181824] border border-[#282838] p-4 rounded-2xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-sm flex items-center gap-2">
+                              <CreditCard className="w-4 h-4 text-purple-400" />
+                              {pm.name}
+                            </span>
+                            <button
+                              onClick={() => handleTogglePaymentStatus(pm.id)}
+                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold border transition-all ${
+                                pm.status === "ACTIVE"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                                  : "bg-gray-500/10 text-gray-400 border-gray-500/30 hover:bg-gray-500/20"
+                              }`}
+                            >
+                              {pm.status === "ACTIVE" ? "🟢 Actif" : "⚪ Archivé"}
+                            </button>
+                          </div>
+                          <div className="bg-[#12121A] p-3 rounded-xl border border-white/5 font-mono text-xs">
+                            <span className="text-gray-400 text-[11px] block">Identifiant / Compte :</span>
+                            <strong className="text-white text-sm">{pm.identifier}</strong>
+                          </div>
+                          {pm.instructions && (
+                            <p className="text-xs text-gray-300 bg-[#14141E] p-2.5 rounded-xl border border-white/5 whitespace-pre-wrap">
+                              {pm.instructions}
+                            </p>
+                          )}
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              onClick={() => {
+                                setEditingPayment(pm);
+                                setPaymentForm({
+                                  name: pm.name,
+                                  identifier: pm.identifier,
+                                  instructions: pm.instructions,
+                                  status: pm.status,
+                                  notes: pm.notes || "",
+                                });
+                                setShowPaymentModal(true);
+                              }}
+                              className="p-1.5 bg-[#252535] hover:bg-[#303045] text-gray-300 rounded-lg transition-all"
+                              title="Modifier"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePayment(pm.id)}
+                              className="p-1.5 bg-[#252535] hover:bg-red-500/20 text-red-400 rounded-lg transition-all"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1931,6 +1972,89 @@ export default function AIAgentsConfigPage() {
                 <button
                   type="submit"
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold"
+                >
+                  Enregistrer
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 1B: PAYMENT METHOD ADD / EDIT */}
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#12121A] border border-[#181824] w-full max-w-lg p-6 rounded-2xl space-y-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-purple-400" />
+              {editingPayment ? "Modifier le Moyen de Paiement" : "Nouveau Moyen de Paiement"}
+            </h3>
+
+            <form onSubmit={handleSavePayment} className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Nom du Moyen de Paiement *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Orange Money, Moov Money, Wave, Virement Bancaire, Cash"
+                  value={paymentForm.name}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, name: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Identifiant / Numéro / Compte *
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Numéro de dépôt, RIB bancaire, ou En espèces"
+                  value={paymentForm.identifier}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, identifier: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm font-mono focus:border-[#7B61FF] outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">
+                  Instructions pour le client
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Ex: Effectuer le dépôt au numéro indiqué puis envoyer la preuve de paiement."
+                  value={paymentForm.instructions}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, instructions: e.target.value })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none font-sans"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-gray-300 block mb-1">Statut</label>
+                <select
+                  value={paymentForm.status}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, status: e.target.value as any })}
+                  className="w-full bg-[#181824] border border-[#282838] rounded-xl p-3 text-white text-sm focus:border-[#7B61FF] outline-none"
+                >
+                  <option value="ACTIVE">Actif (Proposé au client)</option>
+                  <option value="ARCHIVED">Inactif / Archivé (Masqué de l'Agent)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="px-4 py-2 bg-gray-800 text-gray-300 rounded-xl text-xs font-semibold"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-[#7B61FF] hover:bg-[#684DFE] text-white rounded-xl text-xs font-bold"
                 >
                   Enregistrer
                 </button>
