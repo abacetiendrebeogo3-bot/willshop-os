@@ -136,17 +136,42 @@ export default function MyDayPage() {
     loadMyDayData();
   }, []);
 
-  // Action Handlers (Persist state changes)
-  const handleMarkAsTreated = (actionId: string, clientName: string) => {
+  // Action Handlers (Persist state changes in Supabase DB)
+  const handleMarkAsTreated = async (actionId: string, clientName: string) => {
     setActionItems((prev) =>
       prev.map((item) =>
         item.id === actionId ? { ...item, status: "TREATED", treatedAt: new Date() } : item
       )
     );
     showToast(`✅ Action pour ${clientName} marquée comme traitée !`);
+
+    if (organizationId) {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        await supabase.from("ai_actions").insert({
+          organization_id: organizationId,
+          action_type: "TODAY_ACTION_TREATED",
+          permission_level: "GREEN",
+          status: "EXECUTED",
+          metadata: {
+            action_id: actionId,
+            status: "DONE",
+            client_name: clientName,
+            completed_by: user?.id || null,
+            completed_at: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn("Erreur de persistance de l'action traitée:", err);
+      }
+    }
   };
 
-  const handlePostponeAction = (actionId: string, clientName: string) => {
+  const handlePostponeAction = async (actionId: string, clientName: string) => {
     setActionItems((prev) =>
       prev.map((item) =>
         item.id === actionId
@@ -159,13 +184,63 @@ export default function MyDayPage() {
       )
     );
     showToast(`⏳ Action pour ${clientName} reportée à demain.`);
+
+    if (organizationId) {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        await supabase.from("ai_actions").insert({
+          organization_id: organizationId,
+          action_type: "TODAY_ACTION_POSTPONED",
+          permission_level: "GREEN",
+          status: "EXECUTED",
+          metadata: {
+            action_id: actionId,
+            status: "POSTPONED",
+            client_name: clientName,
+            completed_by: user?.id || null,
+            completed_at: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn("Erreur de persistance de l'action reportée:", err);
+      }
+    }
   };
 
-  const handleIgnoreAction = (actionId: string, clientName: string) => {
+  const handleIgnoreAction = async (actionId: string, clientName: string) => {
     setActionItems((prev) =>
       prev.map((item) => (item.id === actionId ? { ...item, status: "IGNORED" } : item))
     );
     showToast(`🙈 Action pour ${clientName} ignorée.`);
+
+    if (organizationId) {
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+
+        await supabase.from("ai_actions").insert({
+          organization_id: organizationId,
+          action_type: "TODAY_ACTION_IGNORED",
+          permission_level: "GREEN",
+          status: "EXECUTED",
+          metadata: {
+            action_id: actionId,
+            status: "IGNORED",
+            client_name: clientName,
+            completed_by: user?.id || null,
+            completed_at: new Date().toISOString(),
+          },
+        });
+      } catch (err) {
+        console.warn("Erreur de persistance de l'action ignorée:", err);
+      }
+    }
   };
 
   // Filter Items

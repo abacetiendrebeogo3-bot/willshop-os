@@ -67,11 +67,53 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // 2. If logged in and accessing login/signup -> redirect to /ceo
-    if (user && (pathname.startsWith('/login') || pathname.startsWith('/signup'))) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/ceo';
-      return NextResponse.redirect(url);
+    // 2. If logged in, fetch user role and enforce RBAC route restrictions
+    if (user && !isApiRoute) {
+      let userRole = 'COMMERCIAL';
+      try {
+        const { data: roleRows } = await supabase
+          .from('user_organization_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .is('deleted_at', null);
+
+        if (roleRows && roleRows.length > 0) {
+          userRole = roleRows[0].role || 'COMMERCIAL';
+        }
+      } catch (_roleErr) {
+        // Fallback default
+      }
+
+      // If accessing login/signup/root -> redirect to appropriate home route
+      if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/signup')) {
+        const url = request.nextUrl.clone();
+        url.pathname = userRole === 'COMMERCIAL' ? '/sales/my-day' : '/ceo';
+        return NextResponse.redirect(url);
+      }
+
+      // Restricted routes for COMMERCIAL role
+      if (userRole === 'COMMERCIAL') {
+        const restrictedForCommercial = [
+          '/ceo',
+          '/finance',
+          '/strategy',
+          '/team',
+          '/marketing',
+          '/intelligence',
+          '/whatsapp',
+          '/ai-agents',
+          '/automation',
+          '/wilty',
+          '/settings',
+        ];
+
+        const isRestricted = restrictedForCommercial.some((r) => pathname === r || pathname.startsWith(r + '/'));
+        if (isRestricted) {
+          const url = request.nextUrl.clone();
+          url.pathname = '/sales/my-day';
+          return NextResponse.redirect(url);
+        }
+      }
     }
   } catch (err: any) {
     console.error('[Middleware Error]', err?.message);
