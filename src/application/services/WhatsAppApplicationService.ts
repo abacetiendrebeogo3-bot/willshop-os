@@ -15,6 +15,9 @@ import { SupabaseProductRepository } from '../../infrastructure/repositories/Sup
 import { InMemoryOrderRepository } from '../../infrastructure/repositories/InMemoryDataCoreRepositories';
 import { CreateOrderService } from './OrderStockApplicationServices';
 import { MarketingAttributionService } from './MarketingAttributionService';
+import { OrderExecutionService } from './OrderExecutionService';
+import { AIGlobalGuardService } from './AIGlobalGuardService';
+
 
 export class WhatsAppApplicationService {
   constructor(
@@ -456,11 +459,11 @@ export class WhatsAppApplicationService {
 
     // 4. Lookup or Create Single Active Conversation per Customer
     let conversationId = '';
-    let conversationMode: 'AI_ACTIVE' | 'HUMAN_ACTIVE' | 'ESCALATED' | 'PAUSED' = 'AI_ACTIVE';
+    let conversationMode: 'FOLLOWUP_ONLY' | 'HUMAN_PRIMARY' | 'AI_ACTIVE' | 'HUMAN_ACTIVE' | 'ESCALATED' | 'PAUSED' = 'FOLLOWUP_ONLY';
 
     const { data: existingConvs } = await this.supabase
       .from('conversations')
-      .select('id, conversation_mode, assigned_agent, status')
+      .select('id, conversation_mode, assigned_agent, status, metadata')
       .eq('organization_id', targetOrgId)
       .eq('customer_id', customerId)
       .neq('status', 'ARCHIVED')
@@ -471,15 +474,22 @@ export class WhatsAppApplicationService {
 
     if (existingConv) {
       conversationId = existingConv.id;
-      conversationMode = (existingConv.conversation_mode as any) || 'AI_ACTIVE';
+      conversationMode = (existingConv.conversation_mode as any) || 'FOLLOWUP_ONLY';
+
+      const nowIso = new Date().toISOString();
+      const updatedMeta = {
+        ...(existingConv.metadata || {}),
+        ...(event.fromMe ? { last_human_activity_at: nowIso, last_commercial_message_at: nowIso } : { last_customer_message_at: nowIso }),
+      };
 
       await this.supabase
         .from('conversations')
-        .update({ last_message_at: new Date().toISOString(), status: 'OPEN' })
+        .update({ last_message_at: nowIso, status: 'OPEN', metadata: updatedMeta })
         .eq('id', conversationId);
     } else {
-      const initialMode = event.fromMe ? 'HUMAN_ACTIVE' : 'AI_ACTIVE';
+      const initialMode = event.fromMe ? 'HUMAN_PRIMARY' : 'FOLLOWUP_ONLY';
       try {
+        const nowIso = new Date().toISOString();
         const { data: newConv } = await this.supabase
           .from('conversations')
           .insert({
@@ -489,8 +499,9 @@ export class WhatsAppApplicationService {
             channel: 'WHATSAPP',
             status: 'OPEN',
             conversation_mode: initialMode,
-            assigned_agent: 'SALES_AI',
-            last_message_at: new Date().toISOString(),
+            assigned_agent: event.fromMe ? 'HUMAN' : 'SALES_AI',
+            last_message_at: nowIso,
+            metadata: event.fromMe ? { last_human_activity_at: nowIso, last_commercial_message_at: nowIso } : { last_customer_message_at: nowIso },
           })
           .select()
           .single();
@@ -511,7 +522,7 @@ export class WhatsAppApplicationService {
 
         if (retryConv) {
           conversationId = retryConv.id;
-          conversationMode = (retryConv.conversation_mode as any) || 'AI_ACTIVE';
+          conversationMode = (retryConv.conversation_mode as any) || 'FOLLOWUP_ONLY';
         }
       }
     }
@@ -540,18 +551,23 @@ export class WhatsAppApplicationService {
         };
       }
 
+      const nowIso = new Date().toISOString();
       await this.supabase
         .from('conversations')
-        .update({ conversation_mode: 'HUMAN_ACTIVE', assigned_agent: 'HUMAN' })
+        .update({
+          assigned_agent: 'HUMAN',
+          last_message_at: nowIso,
+        })
         .eq('id', conversationId);
 
       return {
         status: 'SUCCESS',
-        message: 'Synced smartphone message (fromMe). Conversation switched to HUMAN_ACTIVE.',
+        message: 'Synced smartphone message (fromMe). Commercial activity recorded, followups recalculated.',
         organizationId: targetOrgId,
         conversationId,
       };
     }
+
 
     // 5b. Check Idempotency for ALL incoming messages before processing
     if (event.externalMessageId) {
@@ -742,15 +758,106 @@ export class WhatsAppApplicationService {
       }
     }
 
-    // 7. Check if AI Auto-Reply is Suppressed
-    if (conversationMode === 'HUMAN_ACTIVE' || conversationMode === 'ESCALATED' || conversationMode === 'PAUSED') {
+    // 7. Server-Side Global AI Kill Switch Guard (AIGlobalGuardService SSOT)
+    const aiGuardResult = await AIGlobalGuardService.checkAIEnabled(this.supabase, targetOrgId);
+    if (!aiGuardResult.isAIEnabled) {
+      try {
+        await this.supabase.from('ai_actions').insert({
+          organization_id: targetOrgId,
+          action_type: 'AI_RESPONSE',
+          permission_level: 'RED',
+          status: 'BLOCKED',
+          metadata: {
+            reason: aiGuardResult.blockedReason || 'GLOBAL_AI_DISABLED',
+            conversation_id: conversationId,
+            customer_id: customerId,
+            message_type: event.messageType,
+          },
+        });
+      } catch (logErr) {
+        console.warn('[AI Actions Log Error]', logErr);
+      }
+
       return {
         status: 'SUCCESS',
-        message: `Inbound message saved. AI response suppressed because conversation_mode is '${conversationMode}'`,
+        message: `Inbound message saved. AI response BLOCKED: Global AI is disabled (${aiGuardResult.blockedReason})`,
         organizationId: targetOrgId,
         conversationId,
       };
     }
+
+    // 7b. Check if AI Auto-Reply is Suppressed (OBSERVE_ONLY, FOLLOWUP_ONLY, HUMAN_PRIMARY, HUMAN_ACTIVE, ESCALATED, PAUSED)
+    const isOutboundSuppressed =
+      !aiGuardResult.isAIOutboundAllowed ||
+      (conversationMode as string) === 'OBSERVE_ONLY' ||
+      conversationMode === 'FOLLOWUP_ONLY' ||
+      conversationMode === 'HUMAN_PRIMARY' ||
+      conversationMode === 'HUMAN_ACTIVE' ||
+      conversationMode === 'ESCALATED' ||
+      conversationMode === 'PAUSED';
+
+    if (isOutboundSuppressed) {
+      // EXCEPTION: Check if customer message explicitly confirms an order (e.g. "Oui je prends le kit")
+      const rawText = (event.textBody || '').toLowerCase().trim();
+      const isOrderConfirmation = /oui[\s,]*je (?:prends|confirme|commande|veux)/i.test(rawText) || /je confirme (?:la )?commande/i.test(rawText) || /valide (?:la )?commande/i.test(rawText);
+
+      if (isOrderConfirmation) {
+        // Fetch flowState or active product to attempt order execution
+        const { data: convData } = await this.supabase
+          .from('conversations')
+          .select('metadata')
+          .eq('id', conversationId)
+          .single();
+
+        const flowState = convData?.metadata?.flow_state || {};
+        let targetProductId = flowState.productId;
+
+        if (!targetProductId) {
+          // Fallback: search product by name matching in text
+          const { data: prods } = await this.supabase
+            .from('products')
+            .select('id, name')
+            .eq('organization_id', targetOrgId)
+            .eq('status', 'ACTIVE')
+            .limit(1);
+
+          if (prods && prods.length > 0) {
+            targetProductId = prods[0].id;
+          }
+        }
+
+        if (targetProductId) {
+          const orderExecService = new OrderExecutionService(this.supabase);
+          const execRes = await orderExecService.executeConfirmedOrder({
+            organizationId: targetOrgId,
+            customerId: customerId,
+            conversationId,
+            productId: targetProductId,
+            quantity: flowState.quantity || 1,
+            neighborhood: flowState.neighborhood || 'Benego',
+            customerName: flowState.customerName,
+            customerPhone: event.senderPhone,
+          });
+
+          if (execRes.success) {
+            return {
+              status: 'SUCCESS',
+              message: `Inbound order confirmation processed automatically. ${execRes.message}`,
+              organizationId: targetOrgId,
+              conversationId,
+            };
+          }
+        }
+      }
+
+      return {
+        status: 'SUCCESS',
+        message: `Inbound message saved and context updated. AI response suppressed in '${conversationMode}' mode (commercial handles active chat).`,
+        organizationId: targetOrgId,
+        conversationId,
+      };
+    }
+
 
     // 8. Execute AI Agent Completion (AI_ACTIVE)
     try {

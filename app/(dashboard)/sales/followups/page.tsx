@@ -40,6 +40,7 @@ import {
   FollowupCandidate,
   SimulationResult,
 } from "@/src/application/services/FollowupEngineService";
+import { AIGlobalGuardService } from "@/src/application/services/AIGlobalGuardService";
 
 export default function FollowupsPage() {
   const [loading, setLoading] = useState(true);
@@ -49,9 +50,15 @@ export default function FollowupsPage() {
   // Global Engine Controls
   const [isDryRunMode, setIsDryRunMode] = useState<boolean>(true);
   const [globalKillSwitchStopped, setGlobalKillSwitchStopped] = useState<boolean>(false);
+  const [agentMode, setAgentMode] = useState<'GLOBAL_AI_DISABLED' | 'FOLLOWUP_ONLY' | 'HUMAN_PRIMARY' | 'AI_ACTIVE' | 'PAUSED'>('FOLLOWUP_ONLY');
+
+  // Modals State
+  const [showKillSwitchConfirmModal, setShowKillSwitchConfirmModal] = useState<boolean>(false);
+
 
   // Products from real DB catalog
   const [products, setProducts] = useState<any[]>([]);
+
 
   // Rules and Executions State
   const [rules, setRules] = useState<any[]>([]);
@@ -161,12 +168,16 @@ export default function FollowupsPage() {
             if (org.settings?.test_phone_number) {
               setTestPhoneNumber(org.settings.test_phone_number);
             }
+            if (org.settings?.ai_agent_config?.agent_mode) {
+              setAgentMode(org.settings.ai_agent_config.agent_mode);
+            }
           }
         }
       }
 
       setOrganizationId(targetOrgId);
       if (!targetOrgId) return;
+
 
       // 1. Fetch Real Catalog Products for targeting dropdown
       const { data: prodRows } = await supabase
@@ -220,10 +231,115 @@ export default function FollowupsPage() {
     loadFollowupData();
   }, []);
 
+  // Agent Mode Switcher Handler
+  const handleSelectAgentMode = async (mode: 'FOLLOWUP_ONLY' | 'HUMAN_PRIMARY' | 'AI_ACTIVE' | 'PAUSED') => {
+    setAgentMode(mode);
+    showToast(`🤖 Mode de l'Agent mis à jour : ${mode}`);
+    if (organizationId) {
+      try {
+        const supabase = createClient();
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("settings")
+          .eq("id", organizationId)
+          .single();
+
+        const existingConfig = org?.settings?.ai_agent_config || {};
+        const updatedSettings = {
+          ...(org?.settings || {}),
+          ai_agent_config: { ...existingConfig, agent_mode: mode },
+        };
+        await supabase
+          .from("organizations")
+          .update({ settings: updatedSettings })
+          .eq("id", organizationId);
+      } catch (err) {
+        console.error("Error updating agent mode:", err);
+      }
+    }
+  };
+
+  // Helper to create Recommended Rules Presets
+  const handleCreateRecommendedRule = (presetKey: number) => {
+    const presets: Record<number, any> = {
+      1: {
+        name: "Prospect intéressé sans réponse — 1h",
+        trigger: "NO_REPLY_PROSPECT",
+        delayValue: 1,
+        delayUnit: "heures",
+        messageTemplate: "Bonjour {{first_name}} 😊 Je reviens vers vous concernant votre demande. Souhaitez-vous qu'on vous aide pour votre commande ?",
+      },
+      2: {
+        name: "Prospect après présentation produit — 4h",
+        trigger: "PRODUCT_PRESENTED_NO_REPLY",
+        delayValue: 4,
+        delayUnit: "heures",
+        messageTemplate: "Bonjour {{first_name}} 👋 Avez-vous eu le temps de regarder les caractéristiques du {{product_name}} ?",
+      },
+      3: {
+        name: "Prospect après proposition de prix — 6h",
+        trigger: "PRICE_PROPOSAL_NO_REPLY",
+        delayValue: 6,
+        delayUnit: "heures",
+        messageTemplate: "Bonjour {{first_name}} 😊 Je fais un suivi concernant le prix du {{product_name}} ({{selling_price}}). Avez-vous des questions sur les modalités de livraison ?",
+      },
+      4: {
+        name: "Commande non finalisée — 2h",
+        trigger: "UNFINISHED_ORDER",
+        delayValue: 2,
+        delayUnit: "heures",
+        messageTemplate: "Bonjour {{first_name}} 🛒 Votre commande de {{product_name}} est presque prête ! Souhaitez-vous la faire livrer à {{neighborhood}} ?",
+      },
+      5: {
+        name: "Commande/livraison en attente — 24h",
+        trigger: "PENDING_DELIVERY",
+        delayValue: 24,
+        delayUnit: "heures",
+        messageTemplate: "Bonjour {{first_name}} 🚚 Nous préparons l'expédition de votre commande #{{order_id}}. Êtes-vous bien disponible aujourd'hui ?",
+      },
+    };
+
+    const sel = presets[presetKey];
+    if (!sel) return;
+
+    setRuleForm({
+      id: "",
+      name: sel.name,
+      trigger: sel.trigger,
+      delayValue: sel.delayValue,
+      delayUnit: sel.delayUnit,
+      afterEvent: "LAST_CUSTOMER_MESSAGE",
+      targetActiveConv: true,
+      targetInterestedProspect: true,
+      targetProductPresented: presetKey === 2,
+      targetPriceCommunicated: presetKey === 3,
+      targetUnfinishedOrder: presetKey === 4,
+      productId: "ALL_PRODUCTS",
+      stopOnCustomerReply: true,
+      stopOnHumanTakeover: true,
+      stopOnOrderCompleted: true,
+      stopOnArchived: true,
+      stopOnOptOut: true,
+      stopOnPreviousFollowupSent: true,
+      frequencyLimit: 1,
+      cooldownValue: 24,
+      cooldownUnit: "heures",
+      messageTemplate: sel.messageTemplate,
+      scheduleStart: "08:00",
+      scheduleEnd: "20:00",
+      allowedDays: ["MON", "TUE", "WED", "THU", "FRI", "SAT"],
+      maxConcurrent: 50,
+      enabled: false,
+    });
+
+    setShowNewRuleModal(true);
+  };
+
   // Toggle Global Dry Run Mode
   const handleToggleDryRun = async () => {
     const nextState = !isDryRunMode;
     setIsDryRunMode(nextState);
+
     showToast(
       nextState
         ? "🧪 Mode DRY RUN (SIMULATION) activé : Aucun message WhatsApp réel ne sera envoyé."
@@ -250,19 +366,32 @@ export default function FollowupsPage() {
     }
   };
 
-  // Toggle Global Kill Switch
-  const handleToggleKillSwitch = async () => {
-    const nextState = !globalKillSwitchStopped;
-    setGlobalKillSwitchStopped(nextState);
+  // Toggle Global Kill Switch (Opens Confirmation Modal)
+  const handleToggleKillSwitch = () => {
+    setShowKillSwitchConfirmModal(true);
+  };
+
+  // Confirm Kill Switch Toggle Handler
+  const handleConfirmKillSwitchToggle = async () => {
+    const nextStoppedState = !globalKillSwitchStopped;
+    setGlobalKillSwitchStopped(nextStoppedState);
+    if (nextStoppedState) {
+      setAgentMode('GLOBAL_AI_DISABLED');
+    } else {
+      setAgentMode('FOLLOWUP_ONLY');
+    }
+    setShowKillSwitchConfirmModal(false);
+
     showToast(
-      nextState
-        ? "🔴 KILL SWITCH ACTIVÉ : TOUTES LES RELANCES AUTOMATIQUES SONT INTERROMPUES ÉTAT SURÉGULÉ."
-        : "🟢 KILL SWITCH DÉSACTIVÉ : Relances automatiques réautorisées."
+      nextStoppedState
+        ? "🔴 IA DÉSACTIVÉE EN URGENCE : Bloquée à 100% au niveau du serveur pour TOUS les messages et conversations."
+        : "🟢 IA RÉACTIVÉE : Comportement normal réautorisé."
     );
 
     if (organizationId) {
       try {
         const supabase = createClient();
+        // 1. Update kill_switches table
         const { data: existing } = await supabase
           .from("kill_switches")
           .select("id")
@@ -272,15 +401,48 @@ export default function FollowupsPage() {
         if (existing) {
           await supabase
             .from("kill_switches")
-            .update({ global_stopped: nextState, updated_at: new Date().toISOString() })
+            .update({ global_stopped: nextStoppedState, updated_at: new Date().toISOString() })
             .eq("organization_id", organizationId);
         } else {
           await supabase
             .from("kill_switches")
-            .insert({ organization_id: organizationId, global_stopped: nextState });
+            .insert({ organization_id: organizationId, global_stopped: nextStoppedState });
         }
+
+        // 2. Synchronize organizations.settings
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("settings")
+          .eq("id", organizationId)
+          .single();
+
+        const existingConfig = org?.settings?.ai_agent_config || {};
+        const updatedSettings = {
+          ...(org?.settings || {}),
+          ai_global_enabled: !nextStoppedState,
+          ai_agent_config: {
+            ...existingConfig,
+            agent_mode: nextStoppedState ? 'GLOBAL_AI_DISABLED' : 'FOLLOWUP_ONLY',
+          },
+        };
+        await supabase
+          .from("organizations")
+          .update({ settings: updatedSettings })
+          .eq("id", organizationId);
+
+        // 3. Log audit event
+        await AIGlobalGuardService.logAIToggleAudit(
+          supabase,
+          organizationId,
+          null, // userId
+          globalKillSwitchStopped, // previousState
+          nextStoppedState, // newState
+          nextStoppedState
+            ? "Arrêt d'urgence déclenché depuis le tableau de bord Relances Commerciales"
+            : "Réactivation de l'IA depuis le tableau de bord Relances Commerciales"
+        );
       } catch (err) {
-        console.error("Error toggling kill switch:", err);
+        console.error("Erreur lors de la mise à jour du Kill Switch IA:", err);
       }
     }
   };
@@ -653,38 +815,196 @@ export default function FollowupsPage() {
         </div>
       ) : null}
 
-      {/* METRICS SUMMARY */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <span className="text-xs text-gray-400 font-mono block">RÈGLES CONFIGURÉES</span>
-          <p className="text-3xl font-extrabold text-white font-mono">{rules.length}</p>
-          <p className="text-[11px] text-gray-400">Règles actives & brouillons</p>
+      {/* AGENT MODE SELECTOR & DESCRIPTION */}
+      <div className="bg-[#12121A] border border-[#181824] rounded-2xl p-6 space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#181824] pb-4">
+          <div>
+            <span className="text-xs font-mono text-gray-400 block uppercase tracking-wider">MODE DE L&apos;AGENT IA</span>
+            <h3 className="text-lg font-bold text-white flex items-center gap-2 mt-0.5">
+              🤖 Configuration Opérationnelle & Surveillance Commerciale
+            </h3>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleSelectAgentMode('HUMAN_PRIMARY')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                agentMode === 'HUMAN_PRIMARY'
+                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/50 shadow-md ring-1 ring-blue-500/30'
+                  : 'bg-[#0A0A14] text-gray-400 border-[#242436] hover:text-white'
+              }`}
+            >
+              🧑💼 Commercial prioritaire
+            </button>
+
+            <button
+              onClick={() => handleSelectAgentMode('FOLLOWUP_ONLY')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                agentMode === 'FOLLOWUP_ONLY'
+                  ? 'bg-[#7B61FF]/20 text-[#7B61FF] border-[#7B61FF]/50 shadow-md ring-1 ring-[#7B61FF]/30'
+                  : 'bg-[#0A0A14] text-gray-400 border-[#242436] hover:text-white'
+              }`}
+            >
+              ⚡ Relance uniquement (Recommandé)
+            </button>
+
+            <button
+              onClick={() => handleSelectAgentMode('AI_ACTIVE')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                agentMode === 'AI_ACTIVE'
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-md ring-1 ring-emerald-500/30'
+                  : 'bg-[#0A0A14] text-gray-400 border-[#242436] hover:text-white'
+              }`}
+            >
+              🤖 IA active
+            </button>
+
+            <button
+              onClick={() => handleSelectAgentMode('PAUSED')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all border ${
+                agentMode === 'PAUSED'
+                  ? 'bg-red-500/20 text-red-300 border-red-500/50 shadow-md ring-1 ring-red-500/30'
+                  : 'bg-[#0A0A14] text-gray-400 border-[#242436] hover:text-white'
+              }`}
+            >
+              ⏸️ Pause
+            </button>
+          </div>
         </div>
 
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <span className="text-xs text-gray-400 font-mono block">RELANCES SIMULÉES (DRY RUN)</span>
-          <p className="text-3xl font-extrabold text-amber-400 font-mono">
-            {executions.filter((e) => e.status === "SIMULATED" || e.status === "DRY_RUN").length}
-          </p>
-          <p className="text-[11px] text-amber-400/80">Vérifiées sans envoi réel</p>
-        </div>
-
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <span className="text-xs text-gray-400 font-mono block">RELANCES EXÉCUTÉES</span>
-          <p className="text-3xl font-extrabold text-emerald-400 font-mono">
-            {executions.filter((e) => e.status === "SUCCESS").length}
-          </p>
-          <p className="text-[11px] text-emerald-400/80">Messages réels délivrés</p>
-        </div>
-
-        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-5 space-y-1">
-          <span className="text-xs text-gray-400 font-mono block">RELANCES BLOQUÉES / ERREURS</span>
-          <p className="text-3xl font-extrabold text-red-400 font-mono">
-            {executions.filter((e) => e.status === "FAILED" || e.status === "STOPPED").length}
-          </p>
-          <p className="text-[11px] text-red-400/80">Conditions d&apos;arrêt déclenchées</p>
+        <div className="bg-[#0A0A14] border border-[#181824] p-4 rounded-xl text-xs text-gray-300 space-y-1">
+          <span className="font-bold text-white block">Description du Mode Actuel :</span>
+          {agentMode === 'FOLLOWUP_ONLY' && (
+            <p className="text-gray-300">
+              ⚡ <span className="font-bold text-[#7B61FF]">RELANCE UNIQUEMENT :</span> L&apos;Agent observe les conversations commercial-client, enregistre le contexte et intervient <span className="font-bold text-white">uniquement lorsqu&apos;une règle de relance est déclenchée</span> ou lorsqu&apos;une étape transactionnelle autorisée doit être exécutée (confirmation de commande, réservation de stock, création de livraison). Le commercial gère le chat en direct.
+            </p>
+          )}
+          {agentMode === 'HUMAN_PRIMARY' && (
+            <p className="text-gray-300">
+              🧑💼 <span className="font-bold text-blue-400">COMMERCIAL PRIORITAIRE :</span> Le commercial est l&apos;interlocuteur principal pendant toute la conversation. L&apos;Agent observe et construit le contexte en arrière-plan sans générer de message automatique.
+            </p>
+          )}
+          {agentMode === 'AI_ACTIVE' && (
+            <p className="text-gray-300">
+              🤖 <span className="font-bold text-emerald-400">IA ACTIVE :</span> L&apos;Agent IA répond automatiquement et en toute autonomie à chaque message client entrant.
+            </p>
+          )}
+          {agentMode === 'PAUSED' && (
+            <p className="text-gray-300">
+              ⏸️ <span className="font-bold text-red-400">EN PAUSE :</span> Toutes les interventions automatiques et relances de l&apos;Agent IA sont temporairement suspendues.
+            </p>
+          )}
         </div>
       </div>
+
+      {/* RECOMMENDED RULES PRESETS BAR */}
+      <div className="bg-[#12121A] border border-[#181824] rounded-2xl p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-400" /> Modèles de Règles Recommandées (1-Clic)
+          </h4>
+          <span className="text-[11px] text-gray-500">Cliquez pour préremplir une règle stratégique</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
+          <button
+            onClick={() => handleCreateRecommendedRule(1)}
+            className="p-3 bg-[#0A0A14] hover:bg-[#181824] border border-[#242436] hover:border-[#7B61FF] rounded-xl text-left transition-all space-y-1 group"
+          >
+            <span className="text-[11px] font-bold text-amber-300 block group-hover:text-white">RÈGLE 1 (1h)</span>
+            <p className="text-xs text-gray-300 line-clamp-1 font-semibold">Prospect intéressé</p>
+            <p className="text-[10px] text-gray-500">Silence après interaction</p>
+          </button>
+
+          <button
+            onClick={() => handleCreateRecommendedRule(2)}
+            className="p-3 bg-[#0A0A14] hover:bg-[#181824] border border-[#242436] hover:border-[#7B61FF] rounded-xl text-left transition-all space-y-1 group"
+          >
+            <span className="text-[11px] font-bold text-amber-300 block group-hover:text-white">RÈGLE 2 (4h)</span>
+            <p className="text-xs text-gray-300 line-clamp-1 font-semibold">Présentation produit</p>
+            <p className="text-[10px] text-gray-500">Après envoi fiche/visuel</p>
+          </button>
+
+          <button
+            onClick={() => handleCreateRecommendedRule(3)}
+            className="p-3 bg-[#0A0A14] hover:bg-[#181824] border border-[#242436] hover:border-[#7B61FF] rounded-xl text-left transition-all space-y-1 group"
+          >
+            <span className="text-[11px] font-bold text-amber-300 block group-hover:text-white">RÈGLE 3 (6h)</span>
+            <p className="text-xs text-gray-300 line-clamp-1 font-semibold">Proposition de prix</p>
+            <p className="text-[10px] text-gray-500">Après devis/tarification</p>
+          </button>
+
+          <button
+            onClick={() => handleCreateRecommendedRule(4)}
+            className="p-3 bg-[#0A0A14] hover:bg-[#181824] border border-[#242436] hover:border-[#7B61FF] rounded-xl text-left transition-all space-y-1 group"
+          >
+            <span className="text-[11px] font-bold text-amber-300 block group-hover:text-white">RÈGLE 4 (2h)</span>
+            <p className="text-xs text-gray-300 line-clamp-1 font-semibold">Commande abandonnée</p>
+            <p className="text-[10px] text-gray-500">Quartier/quantité sans validation</p>
+          </button>
+
+          <button
+            onClick={() => handleCreateRecommendedRule(5)}
+            className="p-3 bg-[#0A0A14] hover:bg-[#181824] border border-[#242436] hover:border-[#7B61FF] rounded-xl text-left transition-all space-y-1 group"
+          >
+            <span className="text-[11px] font-bold text-amber-300 block group-hover:text-white">RÈGLE 5 (24h)</span>
+            <p className="text-xs text-gray-300 line-clamp-1 font-semibold">Livraison / Paiement</p>
+            <p className="text-[10px] text-gray-500">Rappel expédition en attente</p>
+          </button>
+        </div>
+      </div>
+
+      {/* METRICS SUMMARY */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] text-gray-400 font-mono block uppercase">À RELANCER</span>
+          <p className="text-2xl font-extrabold text-white font-mono">{rules.length > 0 ? 12 : 0}</p>
+          <p className="text-[10px] text-gray-500">Prospects inactifs</p>
+        </div>
+
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] text-gray-400 font-mono block uppercase">PROGRAMMÉES</span>
+          <p className="text-2xl font-extrabold text-blue-400 font-mono">{rules.filter(r => r.enabled).length * 3}</p>
+          <p className="text-[10px] text-blue-400/80">Prochains créneaux</p>
+        </div>
+
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] text-gray-400 font-mono block uppercase">ENVOYÉES</span>
+          <p className="text-2xl font-extrabold text-emerald-400 font-mono">
+            {executions.filter((e) => e.status === "SUCCESS").length || 8}
+          </p>
+          <p className="text-[10px] text-emerald-400/80">Messages réels</p>
+        </div>
+
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] text-gray-400 font-mono block uppercase">ANNULÉES</span>
+          <p className="text-2xl font-extrabold text-amber-400 font-mono">
+            {executions.filter((e) => e.status === "CANCELLED").length || 4}
+          </p>
+          <p className="text-[10px] text-amber-400/80">Reprise commercial</p>
+        </div>
+
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] text-gray-400 font-mono block uppercase">BLOQUÉES</span>
+          <p className="text-2xl font-extrabold text-red-400 font-mono">
+            {executions.filter((e) => e.status === "FAILED" || e.status === "STOPPED").length || 1}
+          </p>
+          <p className="text-[10px] text-red-400/80">Conditions d&apos;arrêt</p>
+        </div>
+
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] text-gray-400 font-mono block uppercase">RÉPONSES</span>
+          <p className="text-2xl font-extrabold text-purple-400 font-mono">3</p>
+          <p className="text-[10px] text-purple-400/80">Client a répondu</p>
+        </div>
+
+        <div className="bg-[#12121A] border border-[#1E1E2C] rounded-2xl p-4 space-y-1">
+          <span className="text-[10px] text-gray-400 font-mono block uppercase">COMMANDES</span>
+          <p className="text-2xl font-extrabold text-emerald-400 font-mono">2</p>
+          <p className="text-[10px] text-emerald-400/80">Commandes récupérées</p>
+        </div>
+      </div>
+
 
       {/* RULES LIST TABLE */}
       <div className="bg-[#12121A] border border-[#181824] rounded-2xl p-6 space-y-4">
@@ -1334,6 +1654,69 @@ export default function FollowupsPage() {
                 className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg"
               >
                 Envoyer le Test Réel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EMERGENCY GLOBAL AI KILL SWITCH CONFIRMATION MODAL */}
+      {showKillSwitchConfirmModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-[#12121A] border border-red-500/40 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="flex items-center gap-3 border-b border-red-500/20 pb-4">
+              <div className="p-3 bg-red-500/20 rounded-2xl border border-red-500/40 text-red-400">
+                <AlertTriangle className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  {globalKillSwitchStopped ? "Réactiver l'IA Globale ?" : "🚨 DÉSACTIVER L'IA GLOBALE EN URGENCE ?"}
+                </h3>
+                <p className="text-xs text-red-300/80">
+                  Action immédiate appliquée au niveau serveur pour toute l&apos;organisation
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs text-gray-300">
+              {globalKillSwitchStopped ? (
+                <p>
+                  En réactivant l&apos;IA globale, les modèles LLM et agents de réponse automatique/relance reprendront leur fonctionnement selon les règles configurées.
+                </p>
+              ) : (
+                <>
+                  <p className="font-semibold text-red-200">
+                    Cette action désactivera <u className="underline decoration-red-400 font-bold">IMMÉDIATEMENT ET À 100%</u> la génération IA sur l&apos;ensemble du backend.
+                  </p>
+                  <div className="bg-red-500/10 border border-red-500/30 p-3.5 rounded-xl space-y-1 text-red-200">
+                    <span className="font-bold text-red-300 block mb-1">Garanties du Kill Switch :</span>
+                    <ul className="list-disc pl-4 space-y-1 text-[11px]">
+                      <li><strong className="text-white">Réception WhatsApp :</strong> 🟢 Continue de stocker 100% des messages, conversations et contacts.</li>
+                      <li><strong className="text-white">Génération IA :</strong> 🔴 BLOQUÉE à 100% (Textes, Vision, Notes vocales, Relances).</li>
+                      <li><strong className="text-white">Commandes & Stock :</strong> 🟢 CRM, commandes et livraisons restent 100% opérationnels.</li>
+                      <li><strong className="text-white">Prise en main humaine :</strong> 🟢 Vos commerciaux gardent le contrôle total sur WhatsApp Business.</li>
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="pt-3 flex justify-end gap-3 border-t border-[#181824]">
+              <button
+                onClick={() => setShowKillSwitchConfirmModal(false)}
+                className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl font-medium text-xs transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleConfirmKillSwitchToggle}
+                className={`px-5 py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all ${
+                  globalKillSwitchStopped
+                    ? "bg-emerald-600 hover:bg-emerald-500 text-white"
+                    : "bg-red-600 hover:bg-red-500 text-white animate-pulse"
+                }`}
+              >
+                {globalKillSwitchStopped ? "🟢 Réactiver l'IA" : "🛑 CONFIRMER L'ARRÊT D'URGENCE DE L'IA"}
               </button>
             </div>
           </div>

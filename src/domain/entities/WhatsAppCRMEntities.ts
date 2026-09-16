@@ -18,6 +18,7 @@ export interface WhatsAppNumber {
 }
 
 export type ConversationStatus = 'OPEN' | 'PENDING' | 'WAITING_CUSTOMER' | 'WAITING_AGENT' | 'CLOSED' | 'ARCHIVED';
+export type ConversationMode = 'HUMAN_PRIMARY' | 'FOLLOWUP_ONLY' | 'AI_ACTIVE' | 'PAUSED' | 'HUMAN_ACTIVE' | 'ESCALATED';
 
 export interface Conversation {
   id: string;

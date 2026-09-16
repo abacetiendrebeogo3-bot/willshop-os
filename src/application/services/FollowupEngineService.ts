@@ -13,7 +13,10 @@ export interface FollowupCandidate {
   customerPhone: string;
   lastActivityAt: Date;
   lastCustomerMessageAt?: Date | null;
+  lastCommercialMessageAt?: Date | null;
   lastAiResponseAt?: Date | null;
+  lastCustomerMessageContent?: string | null;
+  lastCommercialMessageContent?: string | null;
   conversationStatus: string;
   isArchived: boolean;
   hasHumanTakeover: boolean;
@@ -23,7 +26,10 @@ export interface FollowupCandidate {
   lastFollowupAt?: Date | null;
   productId?: string | null;
   productName?: string | null;
+  sellingPrice?: number | string | null;
+  neighborhood?: string | null;
   orderId?: string | null;
+  lastObjection?: string | null;
 }
 
 export interface SimulationItemResult {
@@ -38,7 +44,22 @@ export interface SimulationItemResult {
   renderedMessage: string;
   missingVariables: string[];
   wouldSend: boolean;
-  finalStatus: 'DRY_RUN_PASSED' | 'BLOCKED_STOP_CONDITION' | 'BLOCKED_DELAY_NOT_MET' | 'BLOCKED_WHATSAPP_WINDOW_CLOSED' | 'BLOCKED_FREQUENCY_LIMIT' | 'BLOCKED_KILL_SWITCH';
+  finalStatus: 'DRY_RUN_PASSED' | 'BLOCKED_STOP_CONDITION' | 'BLOCKED_DELAY_NOT_MET' | 'BLOCKED_WHATSAPP_WINDOW_CLOSED' | 'BLOCKED_FREQUENCY_LIMIT' | 'BLOCKED_KILL_SWITCH' | 'BLOCKED_BY_GLOBAL_AI_DISABLED';
+
+  auditLog?: {
+    WHY_TRIGGERED: string;
+    RULE_ID: string;
+    CONVERSATION_ID: string;
+    CUSTOMER_ID: string;
+    LAST_CUSTOMER_MESSAGE?: string | null;
+    LAST_HUMAN_MESSAGE?: string | null;
+    ELAPSED_TIME_SECONDS: number;
+    CONDITIONS_EVALUATED: Record<string, boolean>;
+    STOP_CONDITIONS: string[];
+    ACTION: string;
+    RESULT: string;
+    PROVIDER_STATUS?: string;
+  };
 }
 
 export interface SimulationResult {
@@ -62,8 +83,11 @@ export class FollowupVariableEngine {
       last_name?: string | null;
       full_name?: string | null;
       product_name?: string | null;
+      selling_price?: number | string | null;
+      neighborhood?: string | null;
       order_id?: string | null;
       company_name?: string | null;
+      last_objection?: string | null;
     }
   ): { rendered: string; missingVars: string[] } {
     if (!template) return { rendered: '', missingVars: [] };
@@ -74,8 +98,11 @@ export class FollowupVariableEngine {
       last_name: context.last_name,
       full_name: context.full_name || (context.first_name ? `${context.first_name} ${context.last_name || ''}`.trim() : null),
       product_name: context.product_name,
+      selling_price: context.selling_price ? `${context.selling_price} FCFA` : null,
+      neighborhood: context.neighborhood,
       order_id: context.order_id,
       company_name: context.company_name || 'WILLShop OS',
+      last_objection: context.last_objection,
     };
 
     const rendered = template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, varName) => {
@@ -90,6 +117,7 @@ export class FollowupVariableEngine {
     return { rendered, missingVars };
   }
 }
+
 
 export class WhatsAppWindowGuard {
   public static check24hWindow(lastCustomerMessageAt?: Date | null, now: Date = new Date()): {
@@ -157,6 +185,7 @@ export class FollowupEngineService {
       template: string;
       enabled: boolean;
       globalKillSwitchStopped?: boolean;
+      aiGlobalDisabled?: boolean;
     },
     candidates: FollowupCandidate[],
     fakeClockOffsetHours: number = 0,
@@ -166,31 +195,55 @@ export class FollowupEngineService {
     const results: SimulationItemResult[] = [];
 
     for (const cand of candidates) {
-      // 1. Check Kill Switch
-      if (rule.globalKillSwitchStopped) {
+      // 1. Check Global AI Kill Switch & Category Kill Switches
+      if (rule.aiGlobalDisabled || rule.globalKillSwitchStopped) {
         const { rendered, missingVars } = FollowupVariableEngine.substitute(rule.template, {
           first_name: cand.customerName.split(' ')[0],
           last_name: cand.customerName.split(' ')[1] || '',
           product_name: cand.productName,
+          selling_price: cand.sellingPrice,
+          neighborhood: cand.neighborhood,
           order_id: cand.orderId,
           company_name: companyName,
+          last_objection: cand.lastObjection,
         });
+
+        const finalStatus = rule.aiGlobalDisabled ? 'BLOCKED_BY_GLOBAL_AI_DISABLED' : 'BLOCKED_KILL_SWITCH';
+        const stopReason = rule.aiGlobalDisabled
+          ? 'IA globale désactivée pour cette organisation (GLOBAL_AI_DISABLED)'
+          : 'INTERRUPTEUR GÉNÉRAL D\'ARRÊT (KILL SWITCH) ACTIF — Génération et relances IA bloquées';
+
         results.push({
           candidate: cand,
           delayRequiredSeconds: rule.delaySeconds,
           delayElapsedSeconds: Math.floor((fakeNow.getTime() - cand.lastActivityAt.getTime()) / 1000),
           isDelaySatisfied: true,
-          stopReason: 'Kill Switch Global Actif — Relances réelles désactivées',
+          stopReason,
           isStopped: true,
           whatsAppWindowOpen: true,
           whatsAppWindowHoursRemaining: 24,
           renderedMessage: rendered,
           missingVariables: missingVars,
           wouldSend: false,
-          finalStatus: 'BLOCKED_KILL_SWITCH',
+          finalStatus,
+          auditLog: {
+            WHY_TRIGGERED: rule.triggerType,
+            RULE_ID: rule.id,
+            CONVERSATION_ID: cand.conversationId,
+            CUSTOMER_ID: cand.customerId,
+            LAST_CUSTOMER_MESSAGE: cand.lastCustomerMessageContent || null,
+            LAST_HUMAN_MESSAGE: cand.lastCommercialMessageContent || null,
+            ELAPSED_TIME_SECONDS: Math.floor((fakeNow.getTime() - cand.lastActivityAt.getTime()) / 1000),
+            CONDITIONS_EVALUATED: { isAIEnabled: false },
+            STOP_CONDITIONS: ['GLOBAL_AI_DISABLED'],
+            ACTION: 'WHATSAPP_FOLLOWUP',
+            RESULT: finalStatus,
+            PROVIDER_STATUS: 'BLOCKED_BY_KILL_SWITCH',
+          },
         });
         continue;
       }
+
 
       // 2. Check Stop Conditions
       let stopReason: string | undefined;
@@ -233,9 +286,13 @@ export class FollowupEngineService {
         first_name: firstName,
         last_name: lastName,
         product_name: cand.productName,
+        selling_price: cand.sellingPrice,
+        neighborhood: cand.neighborhood,
         order_id: cand.orderId,
         company_name: companyName,
+        last_objection: cand.lastObjection,
       });
+
 
       // Determine Final Status
       let finalStatus: SimulationItemResult['finalStatus'] = 'DRY_RUN_PASSED';
@@ -266,6 +323,23 @@ export class FollowupEngineService {
         missingVariables: missingVars,
         wouldSend,
         finalStatus,
+        auditLog: {
+          WHY_TRIGGERED: rule.triggerType,
+          RULE_ID: rule.id,
+          CONVERSATION_ID: cand.conversationId,
+          CUSTOMER_ID: cand.customerId,
+          LAST_CUSTOMER_MESSAGE: cand.lastCustomerMessageContent || null,
+          LAST_HUMAN_MESSAGE: cand.lastCommercialMessageContent || null,
+          ELAPSED_TIME_SECONDS: Math.max(0, elapsedSeconds),
+          CONDITIONS_EVALUATED: {
+            delaySatisfied: isDelaySatisfied,
+            whatsAppWindowOpen: windowCheck.isOpen,
+          },
+          STOP_CONDITIONS: stopConds,
+          ACTION: 'WHATSAPP_FOLLOWUP',
+          RESULT: finalStatus,
+          PROVIDER_STATUS: windowCheck.isOpen ? 'AVAILABLE' : 'WINDOW_CLOSED',
+        },
       });
     }
 
@@ -283,3 +357,4 @@ export class FollowupEngineService {
     };
   }
 }
+

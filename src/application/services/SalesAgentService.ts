@@ -288,7 +288,22 @@ export class SalesAgentService {
       model: string;
     };
   }> {
-    // 0. Handle technical media failure (Inaccessible / Undecryptable Image)
+    // 0a. Server-Side Global AI Kill Switch Guard
+    const isGlobalDisabled =
+      aiAgentConfig?.ai_global_enabled === false ||
+      aiAgentConfig?.enabled === false ||
+      aiAgentConfig?.agent_mode === 'GLOBAL_AI_DISABLED';
+
+    if (isGlobalDisabled) {
+      console.log('[SalesAgentService] Global AI is disabled for this organization. Suppressing LLM API call.');
+      return {
+        responseText: '',
+        triggerHandoff: false,
+        confidence: 0,
+      };
+    }
+
+    // 0b. Handle technical media failure (Inaccessible / Undecryptable Image)
     if (imageAccessFailed) {
       return {
         responseText: "Je n'arrive pas à ouvrir la photo pour le moment 😕\nPouvez-vous me donner le nom du produit ?",
@@ -296,6 +311,7 @@ export class SalesAgentService {
         confidence: 1.0,
       };
     }
+
 
     const contextPrompt = this.contextService.buildContext(customer, recentMessages, availableProducts, adAttribution, 1000, aiAgentConfig, flowState);
 

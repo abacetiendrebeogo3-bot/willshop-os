@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Sun,
   LayoutDashboard,
   MessageSquare,
   Package,
@@ -25,6 +26,7 @@ import { useSidebar } from "@/src/context/SidebarContext";
 
 const NAV_ITEMS = [
   { name: "CEO Cockpit", href: "/ceo", icon: LayoutDashboard },
+  { name: "Ma Journée", href: "/sales/my-day", icon: Sun, badge: "Copilot" },
   { name: "Ventes & CRM", href: "/sales", icon: MessageSquare, badge: "Live" },
   { name: "WhatsApp Supervision", href: "/whatsapp", icon: Zap, badge: "Live" },
   { name: "Agent IA Commercial", href: "/ai-agents", icon: Bot, badge: "AI" },
