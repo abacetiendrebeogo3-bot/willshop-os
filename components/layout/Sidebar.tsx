@@ -23,6 +23,8 @@ import {
   Truck,
   Bot,
   User,
+  MapPin,
+  Clock,
 } from "lucide-react";
 import { useSidebar } from "@/src/context/SidebarContext";
 
@@ -32,6 +34,13 @@ const COMMERCIAL_NAV_ITEMS = [
   { name: "👥 Mes Clients", href: "/sales/customers", icon: Users },
   { name: "🛒 Mes Commandes", href: "/orders", icon: ShoppingCart },
   { name: "📊 Mon Activité", href: "/sales/my-activity", icon: Zap },
+];
+
+const LIVREUR_NAV_ITEMS = [
+  { name: "🚚 Mes Livraisons", href: "/delivery/my-deliveries", icon: Truck },
+  { name: "📍 Carte & Itinéraire", href: "/delivery", icon: MapPin },
+  { name: "📜 Mon Historique", href: "/delivery", icon: Clock },
+  { name: "👤 Mon Profil", href: "/profile", icon: User },
 ];
 
 const CEO_NAV_ITEMS = [
@@ -81,7 +90,12 @@ export function Sidebar() {
     fetchUserRole();
   }, []);
 
-  const navItems = userRole === "COMMERCIAL" ? COMMERCIAL_NAV_ITEMS : CEO_NAV_ITEMS;
+  const navItems =
+    userRole === "LIVREUR"
+      ? LIVREUR_NAV_ITEMS
+      : userRole === "COMMERCIAL"
+      ? COMMERCIAL_NAV_ITEMS
+      : CEO_NAV_ITEMS;
 
   return (
     <>
@@ -111,7 +125,11 @@ export function Sidebar() {
                 <h1 className="font-bold text-white text-sm tracking-wide">WILLShop OS</h1>
                 <div className="flex items-center gap-1.5 text-[10px] text-gray-400 font-mono">
                   <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  {userRole === "COMMERCIAL" ? "Espace Commercial" : "Cockpit Dirigeant"}
+                  {userRole === "LIVREUR"
+                    ? "Espace Livreur"
+                    : userRole === "COMMERCIAL"
+                    ? "Espace Commercial"
+                    : "Cockpit Dirigeant"}
                 </div>
               </div>
             </div>

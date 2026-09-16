@@ -87,8 +87,27 @@ export async function middleware(request: NextRequest) {
       // If accessing login/signup/root -> redirect to appropriate home route
       if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/signup')) {
         const url = request.nextUrl.clone();
-        url.pathname = userRole === 'COMMERCIAL' ? '/sales/my-day' : '/ceo';
+        url.pathname =
+          userRole === 'LIVREUR'
+            ? '/delivery/my-deliveries'
+            : userRole === 'COMMERCIAL'
+            ? '/sales/my-day'
+            : '/ceo';
         return NextResponse.redirect(url);
+      }
+
+      // Restricted routes for LIVREUR role
+      if (userRole === 'LIVREUR') {
+        const allowedForLivreur = ['/delivery', '/profile', '/login', '/signup'];
+        const isAllowed = allowedForLivreur.some(
+          (path) => pathname === path || pathname.startsWith(path + '/')
+        );
+
+        if (!isAllowed) {
+          const url = request.nextUrl.clone();
+          url.pathname = '/delivery/my-deliveries';
+          return NextResponse.redirect(url);
+        }
       }
 
       // Restricted routes for COMMERCIAL role
