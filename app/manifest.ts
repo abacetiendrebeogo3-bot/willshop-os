@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'WILLShop OS',
     short_name: 'WILLShop',
-    description: 'Système de pilotage commercial & OS e-commerce pour entrepreneurs',
+    description: "Le système d'exploitation commercial de votre entreprise.",
     start_url: '/',
     scope: '/',
     display: 'standalone',
@@ -35,6 +35,7 @@ export default function manifest(): MetadataRoute.Manifest {
         src: '/icons/apple-touch-icon.png',
         sizes: '180x180',
         type: 'image/png',
+        purpose: 'any',
       },
     ],
   };

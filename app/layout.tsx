@@ -15,10 +15,13 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: "WILLShop OS — Cockpit Intelligent CEO",
-  description: "Système de pilotage commercial & OS e-commerce pour entrepreneurs africains",
+  description: "Le système d'exploitation commercial de votre entreprise.",
   manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/icons/icon-192x192.png",
+    icon: [
+      { url: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
     shortcut: "/icons/icon-192x192.png",
     apple: "/icons/apple-touch-icon.png",
   },
@@ -26,6 +29,10 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "WILLShop OS",
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "application-name": "WILLShop",
   },
 };
 
